@@ -1,7 +1,12 @@
 import sqlite3
 import re
 import pandas as pd
-from settings import *
+from .settings import *
+
+
+def get_db_connection():
+    """Get a database connection with timeout and proper error handling."""
+    return sqlite3.connect(DB_PATH, timeout=30.0)
 
 
 def parse_ingredients(ingredient_str):
