@@ -4,7 +4,6 @@ import sqlite3
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
-from backend.settings import DB_PATH
 from backend.utils import get_db_connection
 
 dash.register_page(__name__, path='/analysis', order=4)
@@ -46,7 +45,7 @@ def analyze_correlations(n_clicks, symptom_name, user_id):
     if n_clicks == 0 or not symptom_name:
         return ""
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     symptom_id = conn.execute(
         'SELECT id FROM Symptom WHERE name = ?', (symptom_name,)).fetchone()
     if not symptom_id:

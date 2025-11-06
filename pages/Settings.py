@@ -1,7 +1,5 @@
 import dash
 from dash import html, dcc, Input, Output, State, callback
-import sqlite3
-from backend.settings import DB_PATH
 from backend.utils import get_db_connection
 
 dash.register_page(__name__, path='/settings', order=5)

@@ -3,7 +3,6 @@ from dash import html, dcc, Input, Output, State, callback, ALL
 import sqlite3
 import pandas as pd
 from datetime import datetime
-from backend.settings import DB_PATH
 from backend.utils import get_db_connection
 
 dash.register_page(__name__, path='/log-food', order=2)
