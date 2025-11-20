@@ -1,8 +1,28 @@
 import dash
-from dash import html, dcc, Input, Output, State, callback
+from dash import html, dcc, Input, Output, State
+from dash import callback
 import sqlite3
 from datetime import datetime
 from backend.utils import get_db_connection
+
+
+@callback(
+    Output('symptom-dropdown', 'options'),
+    Input('symptom-dropdown', 'search_value'),
+    prevent_initial_call=True
+)
+def update_symptom_options(search_value):
+    conn = get_db_connection()
+    c = conn.cursor()
+    if search_value:
+        c.execute("SELECT name FROM Symptom WHERE name LIKE ? ORDER BY name",
+                  (f"%{search_value}%",))
+    else:
+        c.execute("SELECT name FROM Symptom ORDER BY name")
+    symptoms = c.fetchall()
+    conn.close()
+    return [{"label": s[0], "value": s[0]} for s in symptoms]
+
 
 dash.register_page(__name__, path='/log-symptom', order=3)
 
@@ -11,8 +31,8 @@ layout = html.Div([
     html.Div([
         html.H2("Log Symptom"),
         html.Label("Symptom:"),
-        dcc.Input(id='symptom-input', type='text',
-                  placeholder='Enter symptom name...'),
+        dcc.Dropdown(id='symptom-dropdown',
+                     placeholder='Select or search symptom...', options=[], searchable=True),
         html.Label("Severity (1-10):"),
         dcc.Slider(id='symptom-severity', min=1, max=10,
                    value=5, marks={i: str(i) for i in range(1, 11)}),
@@ -33,7 +53,7 @@ layout = html.Div([
 @callback(
     Output('symptom-status', 'children'),
     Input('save-symptom-btn', 'n_clicks'),
-    State('symptom-input', 'value'),
+    State('symptom-dropdown', 'value'),
     State('symptom-severity', 'value'),
     State('symptom-date', 'date'),
     State('symptom-time', 'value'),
@@ -52,10 +72,14 @@ def save_symptom(n_clicks, symptom_name, severity, date, time, notes, user_id):
             symptom_id = c.execute(
                 'SELECT id FROM Symptom WHERE name = ?', (symptom_name,)).fetchone()[0]
 
+            # Ensure date string always includes a year to avoid DeprecationWarning
             try:
+                # If date is missing or malformed, fallback to now
+                if not date or len(date.split('-')) != 3:
+                    raise ValueError('Date missing or malformed')
                 datetime_str = f"{date} {time}"
                 logged_time = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M')
-            except:
+            except Exception:
                 logged_time = datetime.now()
 
             symptom_date = logged_time.date()

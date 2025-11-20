@@ -203,39 +203,29 @@ def handle_pagination(prev_clicks, next_clicks, current_page, total_pages, resul
 
 
 @callback(
-    Output('food-search-results', 'children', allow_duplicate=True),
-    Input('viewed-ingredients', 'data'),
-    State('search-results', 'data'),
-    State('current-page', 'data'),
-    State('total-pages', 'data'),
-    prevent_initial_call=True
-)
-def update_ingredients_display(viewed_ingredients, results, current_page, total_pages):
-    if not results:
-        return ""
-    return create_paginated_table(results, current_page, total_pages, viewed_ingredients)
-
-
-@callback(
     Output('selected-foods', 'data', allow_duplicate=True),
     Output('selected-foods-list', 'children', allow_duplicate=True),
     Output('viewed-ingredients', 'data', allow_duplicate=True),
+    Output('food-search-results', 'children', allow_duplicate=True),
     Input({'type': 'add-to-meal', 'fdc_id': ALL}, 'n_clicks'),
     Input({'type': 'view-ingredients', 'fdc_id': ALL}, 'n_clicks'),
     State({'type': 'add-to-meal', 'fdc_id': ALL}, 'id'),
     State({'type': 'view-ingredients', 'fdc_id': ALL}, 'id'),
     State('selected-foods', 'data'),
     State('viewed-ingredients', 'data'),
+    State('search-results', 'data'),
+    State('current-page', 'data'),
+    State('total-pages', 'data'),
     prevent_initial_call=True
 )
-def handle_food_actions(add_clicks, view_clicks, add_ids, view_ids, selected, viewed_ingredients):
+def handle_food_actions(add_clicks, view_clicks, add_ids, view_ids, selected, viewed_ingredients, results, current_page, total_pages):
     ctx = dash.callback_context
     if not ctx.triggered:
-        return selected if selected else [], [], viewed_ingredients
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     triggered_prop = ctx.triggered[0]['prop_id']
     if not triggered_prop or triggered_prop == '.':
-        return selected if selected else [], [], viewed_ingredients
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     import ast
     try:
@@ -243,7 +233,7 @@ def handle_food_actions(add_clicks, view_clicks, add_ids, view_ids, selected, vi
         button_type = triggered_id_dict.get('type')
         fdc_id = triggered_id_dict.get('fdc_id')
     except Exception:
-        return selected if selected else [], [], viewed_ingredients
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     if selected is None:
         selected = []
@@ -283,7 +273,7 @@ def handle_food_actions(add_clicks, view_clicks, add_ids, view_ids, selected, vi
         viewed_changed = (old_viewed != viewed_ingredients)
 
     if not selected_changed and not viewed_changed:
-        return dash.no_update, dash.no_update, dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     foods_list = []
     for item in selected:
@@ -307,7 +297,14 @@ def handle_food_actions(add_clicks, view_clicks, add_ids, view_ids, selected, vi
                 item['description'],
                 *buttons
             ]))
-    return selected, foods_list, viewed_ingredients
+
+    if viewed_changed:
+        table = create_paginated_table(
+            results, current_page, total_pages, viewed_ingredients)
+    else:
+        table = dash.no_update
+
+    return selected, foods_list, viewed_ingredients, table
 
 
 @callback(
@@ -390,6 +387,12 @@ def save_meal(n_clicks, selected_foods, user_id, meal_date, meal_time, meal_name
 
             meal_name = meal_name.strip() if meal_name else None
 
+            # Always assign a meal_id, whether named or not
+            c.execute(
+                'SELECT MAX(meal_id) FROM FoodLogEntry WHERE meal_id IS NOT NULL')
+            max_meal_id = c.fetchone()[0]
+            meal_id = (max_meal_id + 1) if max_meal_id is not None else 1
+
             if meal_name:
                 ingredients = set()
                 for item in selected_foods:
@@ -406,13 +409,10 @@ def save_meal(n_clicks, selected_foods, user_id, meal_date, meal_time, meal_name
                     c.execute(
                         'INSERT INTO Ingredient (fdc_id, ingredient) VALUES (?, ?)', (meal_fdc_id, ing))
 
-                c.execute('INSERT INTO FoodLogEntry (daily_log_id, fdc_id, time, notes) VALUES (?, ?, ?, ?)',
-                          (daily_log_id, meal_fdc_id, time, meal_notes))
+                # Insert the named meal as a single FoodLogEntry with a meal_id
+                c.execute('INSERT INTO FoodLogEntry (daily_log_id, fdc_id, time, notes, meal_id) VALUES (?, ?, ?, ?, ?)',
+                          (daily_log_id, meal_fdc_id, time, meal_notes, meal_id))
             else:
-                c.execute(
-                    'SELECT MAX(meal_id) FROM FoodLogEntry WHERE meal_id IS NOT NULL')
-                max_meal_id = c.fetchone()[0]
-                meal_id = (max_meal_id + 1) if max_meal_id is not None else 1
                 for item in selected_foods:
                     if isinstance(item, dict) and 'fdc_id' in item:
                         c.execute('INSERT INTO FoodLogEntry (daily_log_id, fdc_id, time, notes, meal_id) VALUES (?, ?, ?, ?, ?)',
