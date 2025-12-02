@@ -1,12 +1,27 @@
-import sqlite3
+import psycopg2
+import os
+from dotenv import load_dotenv
 import re
 import pandas as pd
 from .settings import *
 
 
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+
+
 def get_db_connection():
-    """Get a database connection with timeout and proper error handling."""
-    return sqlite3.connect(DB_PATH, timeout=30.0)
+    """Get a PostgreSQL database connection using .env credentials."""
+    conn = psycopg2.connect(
+        dbname=os.getenv('dbname'),
+        user=os.getenv('user'),
+        password=os.getenv('password'),
+        host=os.getenv('host'),
+        port=os.getenv('port')
+    )
+    return conn
+
+
+# Removed legacy sqlite3 connection. Only PostgreSQL connection remains.
 
 
 def parse_ingredients(ingredient_str):
@@ -137,17 +152,17 @@ def insert_ingredients(c, ingredient_batch, subingredient_batch):
         subingredient_batch.clear()
 
 
-def search_foods_by_description(query, db_path=DB_PATH, limit=None):
-    conn = sqlite3.connect(db_path)
+def search_foods_by_description(query, limit=None):
+    conn = get_db_connection()
     sql = """
         SELECT fdc_id, description, category
-        FROM Food
-        WHERE description LIKE ?
+        FROM "Food"
+        WHERE description ILIKE %s
         ORDER BY description
     """
     param = f"%{query}%"
     if limit is not None:
-        sql += " LIMIT ?"
+        sql += " LIMIT %s"
         df = pd.read_sql_query(sql, conn, params=(param, limit))
     else:
         df = pd.read_sql_query(sql, conn, params=(param,))
@@ -163,13 +178,13 @@ def print_food_search(query, db_path=DB_PATH, limit=None):
         print(df)
 
 
-def get_ingredients_by_fdc_id(fdc_id, db_path=DB_PATH):
-    conn = sqlite3.connect(db_path)
+def get_ingredients_by_fdc_id(fdc_id):
+    conn = get_db_connection()
     sql = '''
         SELECT i.ingredient, s.sub_ingredient
-        FROM Ingredient i
-        LEFT JOIN SubIngredient s ON i.id = s.ingredient_id
-        WHERE i.fdc_id = ?
+        FROM "Ingredient" i
+        LEFT JOIN "SubIngredient" s ON i.id = s.ingredient_id
+        WHERE i.fdc_id = %s
         ORDER BY i.id, s.id
     '''
     df = pd.read_sql_query(sql, conn, params=(fdc_id,))
@@ -194,12 +209,14 @@ def get_ingredients_by_fdc_id(fdc_id, db_path=DB_PATH):
 
 
 def print_ingredients_by_fdc_id(fdc_id, db_path=DB_PATH):
-    ingredients = get_ingredients_by_fdc_id(fdc_id, db_path)
+    ingredients = get_ingredients_by_fdc_id(fdc_id)
     if not ingredients:
         # Try to get the description from the Food table
-        conn = sqlite3.connect(db_path)
-        desc = conn.execute(
-            'SELECT description FROM Food WHERE fdc_id = ?', (fdc_id,)).fetchone()
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                'SELECT description FROM "Food" WHERE fdc_id = %s', (fdc_id,))
+            desc = cur.fetchone()
         conn.close()
         if desc and desc[0]:
             print(f"No ingredients found for: {desc[0]}, with ID: {fdc_id}")
@@ -210,50 +227,50 @@ def print_ingredients_by_fdc_id(fdc_id, db_path=DB_PATH):
 
 
 def create_food_item(description, ingredients_str, db_path=DB_PATH, category=None):
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    # Check if food already exists
-    c.execute('SELECT fdc_id FROM Food WHERE description = ?',
-              (description.strip(),))
-    row = c.fetchone()
-    if row:
-        fdc_id = row[0]
-        print(f"Food item already exists: {description} (fdc_id={fdc_id})")
-        conn.close()
-        return fdc_id
-    # Insert new food item
-    c.execute('INSERT INTO Food(description, category) VALUES (?, ?)',
-              (description.strip(), category))
-    fdc_id = c.lastrowid
-    # Parse and insert ingredients
-    parsed_ings = parse_ingredients(ingredients_str)
-    for ing, subs in parsed_ings:
-        c.execute(
-            'INSERT INTO Ingredient(fdc_id, ingredient) VALUES (?, ?)', (fdc_id, ing.strip()))
-        ingredient_id = c.lastrowid
-        for sub in subs:
-            c.execute('INSERT INTO SubIngredient(ingredient_id, sub_ingredient) VALUES (?, ?)',
-                      (ingredient_id, sub.strip()))
-    conn.commit()
+    conn = get_db_connection()
+    with conn.cursor() as cur:
+        # Check if food already exists
+        cur.execute('SELECT fdc_id FROM "Food" WHERE description = %s',
+                    (description.strip(),))
+        row = cur.fetchone()
+        if row:
+            fdc_id = row[0]
+            print(f"Food item already exists: {description} (fdc_id={fdc_id})")
+            conn.close()
+            return fdc_id
+        # Insert new food item
+        cur.execute('INSERT INTO "Food"(description, category) VALUES (%s, %s) RETURNING fdc_id',
+                    (description.strip(), category))
+        fdc_id = cur.fetchone()[0]
+        # Parse and insert ingredients
+        parsed_ings = parse_ingredients(ingredients_str)
+        for ing, subs in parsed_ings:
+            cur.execute(
+                'INSERT INTO "Ingredient"(fdc_id, ingredient) VALUES (%s, %s) RETURNING id', (fdc_id, ing.strip()))
+            ingredient_id = cur.fetchone()[0]
+            for sub in subs:
+                cur.execute(
+                    'INSERT INTO "SubIngredient"(ingredient_id, sub_ingredient) VALUES (%s, %s)', (ingredient_id, sub.strip()))
+        conn.commit()
     conn.close()
     print(f"Created food item: {description} (fdc_id={fdc_id})")
     return fdc_id
 
 
 def remove_food_item(fdc_id, db_path=DB_PATH):
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    # Find all ingredient ids for this food item
-    c.execute('SELECT id FROM Ingredient WHERE fdc_id = ?', (fdc_id,))
-    ingredient_ids = [row[0] for row in c.fetchall()]
-    # Remove sub-ingredients
-    if ingredient_ids:
-        c.executemany('DELETE FROM SubIngredient WHERE ingredient_id = ?', [
-                      (ing_id,) for ing_id in ingredient_ids])
-    # Remove ingredients
-    c.execute('DELETE FROM Ingredient WHERE fdc_id = ?', (fdc_id,))
-    # Remove food item
-    c.execute('DELETE FROM Food WHERE fdc_id = ?', (fdc_id,))
-    conn.commit()
+    conn = get_db_connection()
+    with conn.cursor() as cur:
+        # Find all ingredient ids for this food item
+        cur.execute('SELECT id FROM "Ingredient" WHERE fdc_id = %s', (fdc_id,))
+        ingredient_ids = [row[0] for row in cur.fetchall()]
+        # Remove sub-ingredients
+        for ing_id in ingredient_ids:
+            cur.execute(
+                'DELETE FROM "SubIngredient" WHERE ingredient_id = %s', (ing_id,))
+        # Remove ingredients
+        cur.execute('DELETE FROM "Ingredient" WHERE fdc_id = %s', (fdc_id,))
+        # Remove food item
+        cur.execute('DELETE FROM "Food" WHERE fdc_id = %s', (fdc_id,))
+        conn.commit()
     conn.close()
     print(f"Removed food item and all related ingredients for fdc_id={fdc_id}")

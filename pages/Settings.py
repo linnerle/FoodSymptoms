@@ -39,7 +39,7 @@ def load_user_settings(user_id):
         return "", ""
     conn = get_db_connection()
     user = conn.execute(
-        'SELECT username, email FROM User WHERE id = ?', (user_id,)).fetchone()
+        'SELECT username, email FROM user WHERE id = %s', (user_id,)).fetchone()
     conn.close()
     if user:
         return user[0], user[1]
@@ -65,11 +65,11 @@ def save_user_settings(n_clicks, username, email, password, user_id):
         # Update user with or without password
         if password and password.strip():
             # Update with new password
-            c.execute('UPDATE User SET username = ?, email = ?, password = ? WHERE id = ?',
+            c.execute('UPDATE user SET username = %s, email = %s, password = %s WHERE id = %s',
                       (username, email, password, user_id))
         else:
             # Update without changing password
-            c.execute('UPDATE User SET username = ?, email = ? WHERE id = ?',
+            c.execute('UPDATE user SET username = %s, email = %s WHERE id = %s',
                       (username, email, user_id))
 
         conn.commit()

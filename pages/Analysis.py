@@ -1,6 +1,6 @@
 import dash
 from dash import html, dcc, Input, Output, State, callback
-import sqlite3
+import psycopg2
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
@@ -26,8 +26,8 @@ layout = html.Div([
     Input('analyze-btn', 'n_clicks')
 )
 def populate_analysis_symptoms(_):
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql_query("SELECT name FROM Symptom ORDER BY name", conn)
+    conn = get_db_connection()
+    df = pd.read_sql_query('SELECT name FROM "symptom" ORDER BY name', conn)
     conn.close()
     options = [{'label': sym, 'value': sym} for sym in df['name'].tolist()]
     return options
@@ -47,7 +47,7 @@ def analyze_correlations(n_clicks, symptom_name, user_id):
 
     conn = get_db_connection()
     symptom_id = conn.execute(
-        'SELECT id FROM Symptom WHERE name = ?', (symptom_name,)).fetchone()
+        'SELECT id FROM symptom WHERE name = %s', (symptom_name,)).fetchone()
     if not symptom_id:
         return "Symptom not found"
     symptom_id = symptom_id[0]
@@ -55,9 +55,9 @@ def analyze_correlations(n_clicks, symptom_name, user_id):
     correlations = {}
 
     symptom_logs = pd.read_sql_query('''
-        SELECT dl.date || ' ' || sle.time as date_logged FROM SymptomLogEntry sle
-        JOIN DailyLog dl ON sle.daily_log_id = dl.id
-        WHERE dl.user_id = ? AND sle.symptom_id = ?
+        SELECT dl.date || ' ' || sle.time as date_logged FROM symptomlogentry sle
+        JOIN dailylog dl ON sle.daily_log_id = dl.id
+        WHERE dl.user_id = %s AND sle.symptom_id = %s
         ORDER BY dl.date, sle.time
     ''', conn, params=(user_id, symptom_id))
 
@@ -66,20 +66,20 @@ def analyze_correlations(n_clicks, symptom_name, user_id):
 
         start_time = sym_time - timedelta(hours=24)
         meal_ids = pd.read_sql_query('''
-            SELECT DISTINCT fle.meal_id FROM FoodLogEntry fle
-            JOIN DailyLog dl ON fle.daily_log_id = dl.id
-            WHERE dl.user_id = ? AND (dl.date || ' ' || fle.time) BETWEEN ? AND ?
+            SELECT DISTINCT fle.meal_id FROM foodlogentry fle
+            JOIN dailylog dl ON fle.daily_log_id = dl.id
+            WHERE dl.user_id = %s AND (dl.date || ' ' || fle.time) BETWEEN %s AND %s
         ''', conn, params=(user_id, start_time.isoformat(), sym_time.isoformat()))
 
         for _, meal_row in meal_ids.iterrows():
             meal_id = meal_row['meal_id']
             food_logs = pd.read_sql_query('''
-                SELECT fdc_id FROM FoodLogEntry WHERE daily_log_id IN (SELECT id FROM DailyLog WHERE user_id = ?) AND meal_id = ?
+                SELECT fdc_id FROM foodlogentry WHERE daily_log_id IN (SELECT id FROM dailylog WHERE user_id = %s) AND meal_id = %s
             ''', conn, params=(user_id, meal_id))
             for _, food_row in food_logs.iterrows():
                 fdc_id = food_row['fdc_id']
                 ingredients = pd.read_sql_query('''
-                    SELECT i.ingredient FROM Ingredient i WHERE i.fdc_id = ?
+                    SELECT i.ingredient FROM ingredient i WHERE i.fdc_id = %s
                 ''', conn, params=(fdc_id,))
                 for _, ing_row in ingredients.iterrows():
                     ing = ing_row['ingredient']

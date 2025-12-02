@@ -1,7 +1,7 @@
 import dash
 from dash import html, dcc, Input, Output, State
 from dash import callback
-import sqlite3
+import psycopg2
 from datetime import datetime
 from backend.utils import get_db_connection
 
@@ -13,13 +13,13 @@ from backend.utils import get_db_connection
 )
 def update_symptom_options(search_value):
     conn = get_db_connection()
-    c = conn.cursor()
-    if search_value:
-        c.execute("SELECT name FROM Symptom WHERE name LIKE ? ORDER BY name",
-                  (f"%{search_value}%",))
-    else:
-        c.execute("SELECT name FROM Symptom ORDER BY name")
-    symptoms = c.fetchall()
+    with conn.cursor() as cur:
+        if search_value:
+            cur.execute(
+                'SELECT name FROM "symptom" WHERE name ILIKE %s ORDER BY name', (f'%{search_value}%',))
+        else:
+            cur.execute('SELECT name FROM "symptom" ORDER BY name')
+        symptoms = cur.fetchall()
     conn.close()
     return [{"label": s[0], "value": s[0]} for s in symptoms]
 
@@ -66,39 +66,37 @@ def save_symptom(n_clicks, symptom_name, severity, date, time, notes, user_id):
     if n_clicks > 0 and symptom_name:
         try:
             conn = get_db_connection()
-            c = conn.cursor()
-            c.execute(
-                'INSERT OR IGNORE INTO Symptom (name) VALUES (?)', (symptom_name,))
-            symptom_id = c.execute(
-                'SELECT id FROM Symptom WHERE name = ?', (symptom_name,)).fetchone()[0]
+            with conn.cursor() as cur:
+                cur.execute(
+                    'INSERT INTO "symptom" (name) VALUES (%s) ON CONFLICT (name) DO NOTHING', (symptom_name,))
+                cur.execute(
+                    'SELECT id FROM "symptom" WHERE name = %s', (symptom_name,))
+                symptom_id = cur.fetchone()[0]
 
-            # Ensure date string always includes a year to avoid DeprecationWarning
-            try:
-                # If date is missing or malformed, fallback to now
-                if not date or len(date.split('-')) != 3:
-                    raise ValueError('Date missing or malformed')
-                datetime_str = f"{date} {time}"
-                logged_time = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M')
-            except Exception:
-                logged_time = datetime.now()
+                # Ensure date string always includes a year to avoid DeprecationWarning
+                try:
+                    if not date or len(date.split('-')) != 3:
+                        raise ValueError('Date missing or malformed')
+                    datetime_str = f"{date} {time}"
+                    logged_time = datetime.strptime(
+                        datetime_str, '%Y-%m-%d %H:%M')
+                except Exception:
+                    logged_time = datetime.now()
 
-            symptom_date = logged_time.date()
-            symptom_time = logged_time.strftime('%H:%M')
+                symptom_date = logged_time.date()
+                symptom_time = logged_time.strftime('%H:%M')
 
-            c.execute(
-                'INSERT OR IGNORE INTO DailyLog (user_id, date) VALUES (?, ?)', (user_id, symptom_date))
-            c.execute(
-                'SELECT id FROM DailyLog WHERE user_id = ? AND date = ?', (user_id, symptom_date))
-            daily_log_id = c.fetchone()[0]
+                cur.execute(
+                    'INSERT INTO "dailylog" (user_id, date) VALUES (%s, %s) ON CONFLICT (user_id, date) DO NOTHING', (user_id, symptom_date))
+                cur.execute(
+                    'SELECT id FROM "dailylog" WHERE user_id = %s AND date = %s', (user_id, symptom_date))
+                daily_log_id = cur.fetchone()[0]
 
-            c.execute('INSERT INTO SymptomLogEntry (daily_log_id, symptom_id, time, severity, notes) VALUES (?, ?, ?, ?, ?)',
-                      (daily_log_id, symptom_id, symptom_time, severity, notes))
-            conn.commit()
+                cur.execute('INSERT INTO "symptomlogentry" (daily_log_id, symptom_id, time, severity, notes) VALUES (%s, %s, %s, %s, %s)',
+                            (daily_log_id, symptom_id, symptom_time, severity, notes))
+                conn.commit()
             conn.close()
             return f"Symptom '{symptom_name}' logged!"
-        except sqlite3.OperationalError as e:
-            if "locked" in str(e).lower():
-                return "Database is busy. Please try again."
-            else:
-                return f"Database error: {e}"
+        except psycopg2.Error as e:
+            return f"Database error: {e}"
     return ""

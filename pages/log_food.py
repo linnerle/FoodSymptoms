@@ -1,6 +1,6 @@
 import dash
 from dash import html, dcc, Input, Output, State, callback, ALL
-import sqlite3
+import psycopg2
 import pandas as pd
 from datetime import datetime
 from backend.utils import get_db_connection
@@ -52,10 +52,12 @@ def create_paginated_table(results, current_page, total_pages, viewed_ingredient
         # Check if food has ingredients
         try:
             conn = get_db_connection()
-            has_ingredients = conn.execute(
-                'SELECT COUNT(*) FROM Ingredient WHERE fdc_id = ?', (row['fdc_id'],)).fetchone()[0] > 0
+            with conn.cursor() as cur:
+                cur.execute(
+                    'SELECT COUNT(*) FROM "ingredient" WHERE fdc_id = %s', (row['fdc_id'],))
+                has_ingredients = cur.fetchone()[0] > 0
             conn.close()
-        except sqlite3.OperationalError:
+        except psycopg2.Error:
             has_ingredients = False
 
         buttons = [html.Button('Add to Meal', id={
@@ -103,35 +105,25 @@ def create_paginated_table(results, current_page, total_pages, viewed_ingredient
     if viewed_ingredients:
         try:
             conn = get_db_connection()
-            food_desc = conn.execute(
-                'SELECT description FROM Food WHERE fdc_id = ?', (viewed_ingredients,)).fetchone()
-            if food_desc:
-                food_desc = food_desc[0]
-
-                ingredients_df = pd.read_sql_query('''
-                    SELECT i.ingredient
-                    FROM Ingredient i
-                    WHERE i.fdc_id = ?
-                    ORDER BY i.ingredient
-                ''', conn, params=(viewed_ingredients,))
-
-                if not ingredients_df.empty:
-                    ingredients_list = []
-                    for _, row in ingredients_df.iterrows():
-                        ingredients_list.append(html.Li(row['ingredient']))
-
-                    content.extend([
-                        html.H4(f"Ingredients for: {food_desc}"),
-                        html.Ul(ingredients_list)
-                    ])
-
+            with conn.cursor() as cur:
+                cur.execute(
+                    'SELECT description FROM "food" WHERE fdc_id = %s', (viewed_ingredients,))
+                food_desc = cur.fetchone()
+                if food_desc:
+                    food_desc = food_desc[0]
+                    cur.execute(
+                        'SELECT ingredient FROM "ingredient" WHERE fdc_id = %s ORDER BY ingredient', (viewed_ingredients,))
+                    ingredients = cur.fetchall()
+                    if ingredients:
+                        ingredients_list = [html.Li(row[0])
+                                            for row in ingredients]
+                        content.extend([
+                            html.H4(f"Ingredients for: {food_desc}"),
+                            html.Ul(ingredients_list)
+                        ])
             conn.close()
-        except sqlite3.OperationalError as e:
-            if "locked" in str(e).lower():
-                content.append(
-                    html.Div("Database busy - cannot load ingredients"))
-            else:
-                content.append(html.Div(f"Database error: {e}"))
+        except psycopg2.Error as e:
+            content.append(html.Div(f"Database error: {e}"))
 
     return html.Div(content)
 
@@ -151,12 +143,12 @@ def search_foods_for_log(n_clicks, query):
 
     try:
         conn = get_db_connection()
-        sql = """
+        sql = '''
             SELECT fdc_id, description, category
-            FROM Food
-            WHERE description LIKE ?
+            FROM "food"
+            WHERE description ILIKE %s
             ORDER BY description
-        """
+        '''
         df = pd.read_sql_query(sql, conn, params=(f'%{query}%',))
         conn.close()
 
@@ -167,11 +159,8 @@ def search_foods_for_log(n_clicks, query):
         total_pages = (len(results) + 9) // 10
 
         return results, 1, total_pages, create_paginated_table(results, 1, total_pages, viewed_ingredients=None)
-    except sqlite3.OperationalError as e:
-        if "locked" in str(e).lower():
-            return [], 1, 1, "Database is busy. Please try again."
-        else:
-            return [], 1, 1, f"Database error: {e}"
+    except psycopg2.Error as e:
+        return [], 1, 1, f"Database error: {e}"
 
 
 @callback(
@@ -251,14 +240,16 @@ def handle_food_actions(add_clicks, view_clicks, add_ids, view_ids, selected, vi
             if not any(item.get('fdc_id') == fdc_id for item in selected if isinstance(item, dict)):
                 try:
                     conn = get_db_connection()
-                    desc = conn.execute(
-                        'SELECT description FROM Food WHERE fdc_id = ?', (fdc_id,)).fetchone()
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            'SELECT description FROM "food" WHERE fdc_id = %s', (fdc_id,))
+                        desc = cur.fetchone()
                     conn.close()
                     if desc:
                         description = desc[0]
                     else:
                         description = f"Food {fdc_id}"
-                except sqlite3.OperationalError:
+                except psycopg2.Error:
                     description = f"Food {fdc_id}"
 
                 item = {'fdc_id': fdc_id, 'description': description}
@@ -284,10 +275,12 @@ def handle_food_actions(add_clicks, view_clicks, add_ids, view_ids, selected, vi
             ]
             try:
                 conn = get_db_connection()
-                has_ingredients = conn.execute(
-                    'SELECT COUNT(*) FROM Ingredient WHERE fdc_id = ?', (item['fdc_id'],)).fetchone()[0] > 0
+                with conn.cursor() as cur:
+                    cur.execute(
+                        'SELECT COUNT(*) FROM "ingredient" WHERE fdc_id = %s', (item['fdc_id'],))
+                    has_ingredients = cur.fetchone()[0] > 0
                 conn.close()
-            except sqlite3.OperationalError:
+            except psycopg2.Error:
                 has_ingredients = False
             if has_ingredients:
                 button_text = 'View Ingredients'
@@ -378,53 +371,49 @@ def save_meal(n_clicks, selected_foods, user_id, meal_date, meal_time, meal_name
             time = logged_time.strftime('%H:%M')
 
             conn = get_db_connection()
-            c = conn.cursor()
-            c.execute(
-                'INSERT OR IGNORE INTO DailyLog (user_id, date) VALUES (?, ?)', (user_id, date))
-            c.execute(
-                'SELECT id FROM DailyLog WHERE user_id = ? AND date = ?', (user_id, date))
-            daily_log_id = c.fetchone()[0]
+            with conn.cursor() as cur:
+                cur.execute(
+                    'INSERT INTO "dailylog" (user_id, date) VALUES (%s, %s) ON CONFLICT (user_id, date) DO NOTHING', (user_id, date))
+                cur.execute(
+                    'SELECT id FROM "dailylog" WHERE user_id = %s AND date = %s', (user_id, date))
+                daily_log_id = cur.fetchone()[0]
 
-            meal_name = meal_name.strip() if meal_name else None
+                meal_name = meal_name.strip() if meal_name else None
 
-            # Always assign a meal_id, whether named or not
-            c.execute(
-                'SELECT MAX(meal_id) FROM FoodLogEntry WHERE meal_id IS NOT NULL')
-            max_meal_id = c.fetchone()[0]
-            meal_id = (max_meal_id + 1) if max_meal_id is not None else 1
+                cur.execute(
+                    'SELECT MAX(meal_id) FROM "foodlogentry" WHERE meal_id IS NOT NULL')
+                max_meal_id = cur.fetchone()[0]
+                meal_id = (max_meal_id + 1) if max_meal_id is not None else 1
 
-            if meal_name:
-                ingredients = set()
-                for item in selected_foods:
-                    if isinstance(item, dict) and 'fdc_id' in item:
-                        ing_df = pd.read_sql_query(
-                            'SELECT ingredient FROM Ingredient WHERE fdc_id = ?', conn, params=(item['fdc_id'],))
-                        ingredients.update(ing_df['ingredient'].tolist())
+                if meal_name:
+                    ingredients = set()
+                    for item in selected_foods:
+                        if isinstance(item, dict) and 'fdc_id' in item:
+                            cur.execute(
+                                'SELECT ingredient FROM "ingredient" WHERE fdc_id = %s', (item['fdc_id'],))
+                            ingredients.update([row[0]
+                                               for row in cur.fetchall()])
 
-                c.execute(
-                    'INSERT INTO Food (description, category) VALUES (?, ?)', (meal_name, 'Meal'))
-                meal_fdc_id = c.lastrowid
+                    cur.execute(
+                        'INSERT INTO "food" (description, category) VALUES (%s, %s) RETURNING fdc_id', (meal_name, 'Meal'))
+                    meal_fdc_id = cur.fetchone()[0]
 
-                for ing in ingredients:
-                    c.execute(
-                        'INSERT INTO Ingredient (fdc_id, ingredient) VALUES (?, ?)', (meal_fdc_id, ing))
+                    for ing in ingredients:
+                        cur.execute(
+                            'INSERT INTO "ingredient" (fdc_id, ingredient) VALUES (%s, %s)', (meal_fdc_id, ing))
 
-                # Insert the named meal as a single FoodLogEntry with a meal_id
-                c.execute('INSERT INTO FoodLogEntry (daily_log_id, fdc_id, time, notes, meal_id) VALUES (?, ?, ?, ?, ?)',
-                          (daily_log_id, meal_fdc_id, time, meal_notes, meal_id))
-            else:
-                for item in selected_foods:
-                    if isinstance(item, dict) and 'fdc_id' in item:
-                        c.execute('INSERT INTO FoodLogEntry (daily_log_id, fdc_id, time, notes, meal_id) VALUES (?, ?, ?, ?, ?)',
-                                  (daily_log_id, item['fdc_id'], time, meal_notes, meal_id))
-            conn.commit()
+                    cur.execute('INSERT INTO "foodlogentry" (daily_log_id, fdc_id, time, notes, meal_id) VALUES (%s, %s, %s, %s, %s)',
+                                (daily_log_id, meal_fdc_id, time, meal_notes, meal_id))
+                else:
+                    for item in selected_foods:
+                        if isinstance(item, dict) and 'fdc_id' in item:
+                            cur.execute('INSERT INTO "foodlogentry" (daily_log_id, fdc_id, time, notes, meal_id) VALUES (%s, %s, %s, %s, %s)',
+                                        (daily_log_id, item['fdc_id'], time, meal_notes, meal_id))
+                conn.commit()
             conn.close()
             return f"Meal saved with {len(selected_foods)} foods!", [], []
-        except sqlite3.OperationalError as e:
-            if "locked" in str(e).lower():
-                return "Database is busy. Please try again.", selected_foods, []
-            else:
-                return f"Database error: {e}", selected_foods, []
+        except psycopg2.Error as e:
+            return f"Database error: {e}", selected_foods, []
     return "", selected_foods, []
 
 

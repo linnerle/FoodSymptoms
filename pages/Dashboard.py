@@ -84,8 +84,6 @@ layout = html.Div([
     Output('user-info', 'children'),
     Input('current-user-id', 'data')
 )
-
-
 @callback(
     Output('calendar-view', 'children'),
     Output('calendar-date', 'data', allow_duplicate=True),
@@ -129,30 +127,33 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
     conn = get_db_connection()
 
     # Query food entries
+    print(
+        f"DEBUG: user_id={user_id}, start_date={start_date}, end_date={end_date}")
     food_df = pd.read_sql_query('''
         SELECT dl.date, fle.id as entry_id, f.description as name, fle.time, fle.notes, fle.meal_id
-        FROM DailyLog dl
-        JOIN FoodLogEntry fle ON dl.id = fle.daily_log_id
-        JOIN Food f ON fle.fdc_id = f.fdc_id
-        WHERE dl.user_id = ? AND dl.date BETWEEN ? AND ?
+        FROM "dailylog" dl
+        JOIN "foodlogentry" fle ON dl.id = fle.daily_log_id
+        JOIN "food" f ON fle.fdc_id = f.fdc_id
+        WHERE dl.user_id = %s AND dl.date BETWEEN %s AND %s
         ORDER BY dl.date, fle.time
     ''', conn, params=(user_id, start_date.isoformat(), end_date.isoformat()))
+    print(f"DEBUG: food_df rows={len(food_df)}")
 
-    # Query symptom entries
     symptom_df = pd.read_sql_query('''
         SELECT dl.date, sle.id as entry_id, s.name, sle.time, sle.severity, sle.notes
-        FROM DailyLog dl
-        JOIN SymptomLogEntry sle ON dl.id = sle.daily_log_id
-        JOIN Symptom s ON sle.symptom_id = s.id
-        WHERE dl.user_id = ? AND dl.date BETWEEN ? AND ?
+        FROM "dailylog" dl
+        JOIN "symptomlogentry" sle ON dl.id = sle.daily_log_id
+        JOIN "symptom" s ON sle.symptom_id = s.id
+        WHERE dl.user_id = %s AND dl.date BETWEEN %s AND %s
         ORDER BY dl.date, sle.time
     ''', conn, params=(user_id, start_date.isoformat(), end_date.isoformat()))
-
+    print(f"DEBUG: symptom_df rows={len(symptom_df)}")
     conn.close()
     # Group by date
     entries = {}
     for _, row in food_df.iterrows():
-        d = row['date']
+        d = row['date'].isoformat() if hasattr(
+            row['date'], 'isoformat') else str(row['date'])
         if d not in entries:
             entries[d] = {'meals': {}, 'symptoms': [], 'foods': []}
         meal_id = row['meal_id']
@@ -160,7 +161,7 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
         if meal_id is not None and str(meal_id).strip() not in ('', 'None', 'none', 'null', '0') and meal_id != 0:
             if meal_id not in entries[d]['meals']:
                 entries[d]['meals'][meal_id] = {
-                    'time': row['time'],
+                    'time': row['time'].strftime('%H:%M') if hasattr(row['time'], 'strftime') else str(row['time']),
                     'foods': []
                 }
             entries[d]['meals'][meal_id]['foods'].append({
@@ -172,18 +173,19 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
             entries[d]['foods'].append({
                 'id': row['entry_id'],
                 'name': row['name'],
-                'time': row['time'],
+                'time': row['time'].strftime('%H:%M') if hasattr(row['time'], 'strftime') else str(row['time']),
                 'notes': row['notes']
             })
 
     for _, row in symptom_df.iterrows():
-        d = row['date']
+        d = row['date'].isoformat() if hasattr(
+            row['date'], 'isoformat') else str(row['date'])
         if d not in entries:
             entries[d] = {'meals': {}, 'symptoms': [], 'foods': []}
         entries[d]['symptoms'].append({
             'id': row['entry_id'],
             'name': row['name'],
-            'time': row['time'],
+            'time': row['time'].strftime('%H:%M') if hasattr(row['time'], 'strftime') else str(row['time']),
             'severity': row['severity'],
             'notes': row['notes']
         })
@@ -412,7 +414,8 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
                 }}, 500);
             """)
         the_div = html.Div([
-            html.H4(base_date.strftime('%A, %B %d, %Y'), style=day_title_style),
+            html.H4(base_date.strftime('%A, %B %d, %Y'),
+                    style=day_title_style),
             html.Div(
                 hour_labels + hour_grid_lines + now_line + entry_divs,
                 style=container_style,
@@ -593,8 +596,8 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
                         entry_style.update(get_entry_style(entry['type']))
                         cell_entries.append(html.Div(
                             [
-                                html.Div(entry['time'], style={
-                                         'fontWeight': 'bold', 'fontSize': '11px', 'color': '#1976d2', 'marginBottom': '2px'}),
+                                html.Span(entry['time'], style={
+                                    'fontWeight': 'bold', 'fontSize': '11px', 'color': '#1976d2', 'marginRight': '8px'}),
                                 entry['name']
                             ],
                             id={'type': 'entry',
@@ -757,6 +760,51 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
                 base_style.pop('borderRadius', None)
             return base_style
 
+        def create_month_entry_cards(entry_list, entry_type):
+            cards = []
+            if entry_type == 'meal':
+                for meal_id, meal_data in entry_list.items():
+                    if meal_id is not None and str(meal_id).strip() not in ('', 'None', 'none', 'null', '0') and meal_id != 0:
+                        food_names = [f["name"] for f in meal_data['foods']]
+                        card = html.Button(
+                            [
+                                html.Span(meal_data['time'], style={
+                                    'fontWeight': 'bold', 'fontSize': '11px', 'color': '#1976d2', 'marginRight': '8px'}),
+                                f"{', '.join(food_names)}"
+                            ],
+                            id={'type': 'entry', 'entry_type': 'meal',
+                                'entry_id': meal_id},
+                            style=get_entry_style('meal')
+                        )
+                        cards.append(card)
+            elif entry_type == 'food':
+                for entry in entry_list:
+                    card = html.Button(
+                        [
+                            html.Span(entry['time'], style={
+                                'fontWeight': 'bold', 'fontSize': '11px', 'color': '#1976d2', 'marginRight': '8px'}),
+                            entry['name']
+                        ],
+                        id={'type': 'entry', 'entry_type': 'food',
+                            'entry_id': entry['id']},
+                        style=get_entry_style('food')
+                    )
+                    cards.append(card)
+            elif entry_type == 'symptom':
+                for entry in entry_list:
+                    card = html.Button(
+                        [
+                            html.Span(entry['time'], style={
+                                'fontWeight': 'bold', 'fontSize': '11px', 'color': '#1976d2', 'marginRight': '8px'}),
+                            entry['name']
+                        ],
+                        id={'type': 'entry', 'entry_type': 'symptom',
+                            'entry_id': entry['id']},
+                        style=get_entry_style('symptom')
+                    )
+                    cards.append(card)
+            return cards
+
         month_table = html.Table([
             html.Thead(html.Tr([
                 html.Th(day, style={'textAlign': 'center', 'width': '14.28%', 'color': '#1976d2' if (
@@ -770,21 +818,20 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
                             'fontWeight': 'bold', 'marginBottom': '5px', 'color': '#1976d2' if (day == today.day and today.year == year and today.month == month) else 'inherit'}) if day != 0 else "",
                         html.Div(
                             (
-                                create_entry_cards(
-                                    {k: v for k, v in entries.get(f"{year}-{month:02d}-{day:02d}", {}).get('meals', {}).items(
-                                    ) if k is not None and str(k).strip() not in ('', 'None', 'none', 'null', '0') and k != 0},
+                                create_month_entry_cards(
+                                    {k: v for k, v in entries.get(f"{year}-{month:02d}-{day:02d}", {}).get('meals', {}).items()
+                                     if k is not None and str(k).strip() not in ('', 'None', 'none', 'null', '0') and k != 0},
                                     'meal'
                                 ) if any(k is not None and str(k).strip() not in ('', 'None', 'none', 'null', '0') and k != 0 for k in entries.get(f"{year}-{month:02d}-{day:02d}", {}).get('meals', {}).keys()) else []
-                            ) + create_entry_cards(
+                            ) + create_month_entry_cards(
                                 entries.get(
                                     f"{year}-{month:02d}-{day:02d}", {}).get('foods', []),
                                 'food'
-                            ) + create_entry_cards(
+                            ) + create_month_entry_cards(
                                 entries.get(
                                     f"{year}-{month:02d}-{day:02d}", {}).get('symptoms', []),
                                 'symptom'
-                            )
-                        ) if day != 0 else ""
+                            ), style={'display': 'flex', 'flexDirection': 'column', 'gap': '2px'}) if day != 0 else ""
                     ], style=get_td_style(day)) for day in week
                 ]) for week in cal
             ])
@@ -846,14 +893,16 @@ def manage_entry_modal(entry_clicks, close_clicks, current_style, refresh_data, 
                         meal_id_str = str(entry_id)
                         foods_df = pd.read_sql_query('''
                             SELECT f.description, fle.time, fle.notes
-                            FROM FoodLogEntry fle
-                            JOIN Food f ON fle.fdc_id = f.fdc_id
-                            WHERE fle.meal_id = ?
+                            FROM "foodlogentry" fle
+                            JOIN "food" f ON fle.fdc_id = f.fdc_id
+                            WHERE fle.meal_id = %s
                             ORDER BY fle.time
                         ''', conn, params=(meal_id_str,))
                         if not foods_df.empty:
-                            food_list = [html.Li(f"{row['description']} ({row['time']}) - Notes: {row['notes'] or 'None'}") for _, row in foods_df.iterrows()]
-                            food_names = ', '.join(foods_df['description'].tolist())
+                            food_list = [html.Li(
+                                f"{row['description']} ({row['time']}) - Notes: {row['notes'] or 'None'}") for _, row in foods_df.iterrows()]
+                            food_names = ', '.join(
+                                foods_df['description'].tolist())
                             details = html.Div([
                                 html.H4(f"Meal: {food_names}"),
                                 html.H5("Foods in this meal:"),
@@ -866,9 +915,9 @@ def manage_entry_modal(entry_clicks, close_clicks, current_style, refresh_data, 
                 elif entry_type == 'symptom':
                     df = pd.read_sql_query('''
                         SELECT s.name, sle.time, sle.severity, sle.notes
-                        FROM SymptomLogEntry sle
-                        JOIN Symptom s ON sle.symptom_id = s.id
-                        WHERE sle.id = ?
+                        FROM "symptomlogentry" sle
+                        JOIN "symptom" s ON sle.symptom_id = s.id
+                        WHERE sle.id = %s
                     ''', conn, params=(entry_id,))
                     if not df.empty:
                         row = df.iloc[0]
@@ -894,7 +943,8 @@ def manage_entry_modal(entry_clicks, close_clicks, current_style, refresh_data, 
 @callback(
     Output('entry-modal', 'style', allow_duplicate=True),
     Output('calendar-refresh', 'data', allow_duplicate=True),
-    Input({'type': 'modal-delete-entry', 'entry_type': ALL, 'entry_id': ALL}, 'n_clicks'),
+    Input({'type': 'modal-delete-entry',
+          'entry_type': ALL, 'entry_id': ALL}, 'n_clicks'),
     State('current-user-id', 'data'),
     State('calendar-refresh', 'data'),
     prevent_initial_call=True
@@ -918,13 +968,13 @@ def delete_entry(delete_clicks, user_id, current_refresh):
     conn = get_db_connection()
     if entry_type == 'meal':
         conn.execute(
-            'DELETE FROM FoodLogEntry WHERE meal_id = ? AND daily_log_id IN (SELECT id FROM DailyLog WHERE user_id = ?)', (entry_id, user_id))
+            'DELETE FROM foodlogentry WHERE meal_id = %s AND daily_log_id IN (SELECT id FROM dailylog WHERE user_id = %s)', (entry_id, user_id))
     elif entry_type == 'food':
         conn.execute(
-            'DELETE FROM FoodLogEntry WHERE id = ? AND daily_log_id IN (SELECT id FROM DailyLog WHERE user_id = ?)', (entry_id, user_id))
+            'DELETE FROM foodlogentry WHERE id = %s AND daily_log_id IN (SELECT id FROM dailylog WHERE user_id = %s)', (entry_id, user_id))
     elif entry_type == 'symptom':
         conn.execute(
-            'DELETE FROM SymptomLogEntry WHERE id = ? AND daily_log_id IN (SELECT id FROM DailyLog WHERE user_id = ?)', (entry_id, user_id))
+            'DELETE FROM symptomlogentry WHERE id = %s AND daily_log_id IN (SELECT id FROM dailylog WHERE user_id = %s)', (entry_id, user_id))
     conn.commit()
     conn.close()
     return {'display': 'none'}, (current_refresh or 0) + 1
