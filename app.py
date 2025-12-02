@@ -87,8 +87,8 @@ if __name__ == '__main__':
         prog='MealMap',
         description='Food & Symptom Tracker'
     )
-    parser.add_argument('--hostname', default='localhost')
-    parser.add_argument('--port', default='8050')
+    parser.add_argument('--hostname', default='0.0.0.0')
+    parser.add_argument('--port', default='8080')
     args = parser.parse_args()
 
-    app.run(debug=True, host=args.hostname, port=int(args.port))
+    app.run(debug=False, host=args.hostname, port=int(args.port))
