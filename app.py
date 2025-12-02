@@ -82,10 +82,10 @@ def update_header(is_logged_in, pathname):
     ])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = ArgumentParser(
-        prog='MealMap',
-        description='Food & Symptom Tracker'
+        prog='app.py',
+        description='main application'
     )
     parser.add_argument('--hostname', default='0.0.0.0')
     parser.add_argument('--port', default='8080')
