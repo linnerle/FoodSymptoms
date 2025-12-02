@@ -1,6 +1,5 @@
 import dash
 from dash import Dash, html, dcc, Input, Output, State, callback
-from argparse import ArgumentParser
 
 # Initialize the Dash app with multi-page support
 app = Dash(
@@ -84,13 +83,6 @@ def update_header(is_logged_in, pathname):
 
 if __name__ == "__main__":
     import os
-    parser = ArgumentParser(
-        prog='app.py',
-        description='main application'
-    )
-    parser.add_argument('--hostname', default='0.0.0.0')
-    args = parser.parse_args()
-
     # Use $PORT env variable if set, else default to 8080
     port = int(os.environ.get('PORT', 8080))
-    app.run(debug=False, host=args.hostname, port=port)
+    app.run(debug=False, host='0.0.0.0', port=port)
