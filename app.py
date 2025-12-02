@@ -83,12 +83,14 @@ def update_header(is_logged_in, pathname):
 
 
 if __name__ == "__main__":
+    import os
     parser = ArgumentParser(
         prog='app.py',
         description='main application'
     )
     parser.add_argument('--hostname', default='0.0.0.0')
-    parser.add_argument('--port', default='8080')
     args = parser.parse_args()
 
-    app.run(debug=False, host=args.hostname, port=int(args.port))
+    # Use $PORT env variable if set, else default to 8080
+    port = int(os.environ.get('PORT', 8080))
+    app.run(debug=False, host=args.hostname, port=port)
