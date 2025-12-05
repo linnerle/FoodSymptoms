@@ -3,7 +3,7 @@ from backend.utils import get_db_connection
 import calendar
 from datetime import datetime, date, timedelta
 import pandas as pd
-from dash import html, dcc, Input, Output, State, callback, ALL
+from dash import html, dcc, Input, Output, State, callback, ALL, MATCH
 
 
 def get_entry_style(entry_type):
@@ -43,8 +43,8 @@ dash.register_page(__name__, path='/dashboard', order=1)
 
 layout = html.Div([
     html.Div([
-        html.Button('←', id='calendar-prev-btn', n_clicks=0, 
-                   style={'fontSize': '14px', 'padding': '6px 12px', 'marginRight': '8px', 'cursor': 'pointer', 'height': '32px', 'border': '1px solid #ccc', 'borderRadius': '4px', 'backgroundColor': 'white', 'alignSelf': 'center'}),
+        html.Button('←', id='calendar-prev-btn', n_clicks=0,
+                    style={'fontSize': '14px', 'padding': '6px 12px', 'marginRight': '8px', 'cursor': 'pointer', 'height': '32px', 'border': '1px solid #ccc', 'borderRadius': '4px', 'backgroundColor': 'white', 'alignSelf': 'center'}),
         html.Div(
             dcc.Dropdown(
                 id='calendar-view-mode',
@@ -60,16 +60,23 @@ layout = html.Div([
             style={'height': '32px', 'position': 'relative', 'top': '-3px'}
         ),
         html.Button('→', id='calendar-next-btn', n_clicks=0,
-                   style={'fontSize': '14px', 'padding': '6px 12px', 'marginLeft': '8px', 'cursor': 'pointer', 'height': '32px', 'border': '1px solid #ccc', 'borderRadius': '4px', 'backgroundColor': 'white', 'alignSelf': 'center'})
+                    style={'fontSize': '14px', 'padding': '6px 12px', 'marginLeft': '8px', 'cursor': 'pointer', 'height': '32px', 'border': '1px solid #ccc', 'borderRadius': '4px', 'backgroundColor': 'white', 'alignSelf': 'center'})
     ], style={'textAlign': 'center', 'margin': '16px 0', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center'}),
     html.Div([
-        html.Div(id='calendar-view')
+        dcc.Loading(
+            id='loading-calendar',
+            type='circle',
+            color='#1976d2',
+            children=html.Div(id='calendar-view')
+        )
     ]),
     dcc.Store(id='calendar-refresh', data=0),
     dcc.Store(id='calendar-date', data=date.today().isoformat()),
     dcc.Store(id='modal-close-store', data=0),
     dcc.Store(id='previous-view-mode', data='month'),
     dcc.Store(id='scroll-trigger', data=0),
+    dcc.Store(id='modal-edit-mode', data=False),
+    dcc.Store(id='modal-entry-data', data={}),
     html.Div(
         id='entry-modal',
         style={'display': 'none', 'position': 'fixed', 'zIndex': 1000, 'left': 0, 'top': 0,
@@ -80,9 +87,14 @@ layout = html.Div([
                        'borderRadius': '8px', 'boxShadow': '0 4px 12px rgba(0,0,0,0.15)',
                        'width': '90%', 'maxWidth': '600px'},
                 children=[
+                    html.Div(id='modal-title-row'),
                     html.Div(id='entry-details'),
-                    html.Button('Close', id='modal-close-btn',
-                                n_clicks=0, style={'marginTop': '20px'})
+                    html.Div([
+                        html.Button('Edit', id='modal-edit-btn',
+                                    n_clicks=0, style={'padding': '6px 16px', 'fontSize': '14px', 'backgroundColor': '#e3f2fd', 'color': '#1976d2', 'border': '1px solid #90caf9', 'borderRadius': '4px', 'cursor': 'pointer', 'marginRight': '8px'}),
+                        html.Button('Close', id='modal-close-btn',
+                                    n_clicks=0, style={'padding': '6px 16px', 'fontSize': '14px'})
+                    ], id='modal-buttons', style={'marginTop': '20px'})
                 ]
             )
         ]
@@ -247,7 +259,7 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
             return h, m
         except Exception:
             return 0, 0
-    
+
     # Helper to format time for display (hide 00:00)
     def format_time_display(time_str):
         """Returns empty string if time is 00:00, otherwise returns time in parentheses"""
@@ -321,7 +333,7 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
                         'fontWeight': 'bold', 'fontSize': '11px', 'color': '#1976d2', 'marginRight': '8px'})
                 )
             button_content.append(entry['name'])
-            
+
             entry_divs.append(html.Button(
                 button_content,
                 id={'type': 'entry',
@@ -426,7 +438,7 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
                 html.H4(base_date.strftime('%A, %B %d, %Y'),
                         style={'display': 'inline-block', 'margin': '0 8px 0 0', 'color': '#1976d2', 'fontWeight': 'bold'}),
                 html.Button('Today', id='calendar-today-btn', n_clicks=0,
-                           style={'padding': '6px 12px', 'cursor': 'pointer', 'verticalAlign': 'middle'})
+                            style={'padding': '6px 12px', 'cursor': 'pointer', 'verticalAlign': 'middle'})
             ], style={'textAlign': 'center', 'margin': '16px 0 8px 0'}),
             html.Div(
                 hour_labels + hour_grid_lines + now_line + entry_divs,
@@ -612,8 +624,8 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
                                     'fontWeight': 'bold', 'fontSize': '11px', 'color': '#1976d2', 'marginRight': '8px'})
                             )
                         entry_content.append(entry['name'])
-                        
-                        cell_entries.append(html.Div(
+
+                        cell_entries.append(html.Button(
                             entry_content,
                             id={'type': 'entry',
                                 'entry_type': entry['type'], 'entry_id': entry['id']},
@@ -725,15 +737,15 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
         week_number = start_date.isocalendar()[1]
         week_title = html.Div([
             html.Div([
-                html.Span(str(week_number), 
-                         style={'display': 'inline-block', 'width': '32px', 'height': '32px', 'lineHeight': '32px',
-                                'borderRadius': '50%', 'backgroundColor': '#1976d2', 'color': 'white',
-                                'fontWeight': 'bold', 'fontSize': '14px', 'textAlign': 'center'}),
+                html.Span(str(week_number),
+                          style={'display': 'inline-block', 'width': '32px', 'height': '32px', 'lineHeight': '32px',
+                                 'borderRadius': '50%', 'backgroundColor': '#1976d2', 'color': 'white',
+                                 'fontWeight': 'bold', 'fontSize': '14px', 'textAlign': 'center'}),
             ], style={'position': 'absolute', 'left': '60px', 'top': '50%', 'transform': 'translateY(-50%)'}),
             html.H4(f"{start_date.strftime('%b %d')} - {end_date.strftime('%b %d, %Y')}",
                     style={'display': 'inline-block', 'margin': '0 8px 0 0', 'color': '#1976d2', 'fontWeight': 'bold'}),
             html.Button('Today', id='calendar-today-btn', n_clicks=0,
-                       style={'padding': '6px 12px', 'cursor': 'pointer', 'verticalAlign': 'middle'})
+                        style={'padding': '6px 12px', 'cursor': 'pointer', 'verticalAlign': 'middle'})
         ], style={'position': 'relative', 'textAlign': 'center', 'margin': '16px 0 8px 0'})
         # Center scroll on current time row if this week
         table_style = {'width': '100%', 'borderCollapse': 'collapse',
@@ -768,7 +780,8 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
                 row_height = max(hour_height if max_entry_height >
                                  0 else 28, int(max_entry_height))
                 row_heights.append(row_height)
-            week_scroll_position = sum(row_heights[:current_hour]) + (current_minute / 60) * row_heights[current_hour] if current_hour < len(row_heights) else 0
+            week_scroll_position = sum(row_heights[:current_hour]) + (
+                current_minute / 60) * row_heights[current_hour] if current_hour < len(row_heights) else 0
         the_div = html.Div([
             week_title,
             html.Table([
@@ -796,7 +809,7 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
             html.H4(base_date.strftime('%B %Y'),
                     style={'display': 'inline-block', 'margin': '0 8px 0 0', 'color': '#1976d2', 'fontWeight': 'bold'}),
             html.Button('Today', id='calendar-today-btn', n_clicks=0,
-                       style={'padding': '6px 12px', 'cursor': 'pointer', 'verticalAlign': 'middle'})
+                        style={'padding': '6px 12px', 'cursor': 'pointer', 'verticalAlign': 'middle'})
         ], style={'textAlign': 'center', 'margin': '8px 0 8px 0'})
 
         def get_td_style(day):
@@ -822,7 +835,7 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
                                     'fontWeight': 'bold', 'fontSize': '11px', 'color': '#1976d2', 'marginRight': '8px'})
                             )
                         card_content.append(f"{', '.join(food_names)}")
-                        
+
                         card = html.Button(
                             card_content,
                             id={'type': 'entry', 'entry_type': 'meal',
@@ -840,7 +853,7 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
                                 'fontWeight': 'bold', 'fontSize': '11px', 'color': '#1976d2', 'marginRight': '8px'})
                         )
                     card_content.append(entry['name'])
-                    
+
                     card = html.Button(
                         card_content,
                         id={'type': 'entry', 'entry_type': 'food',
@@ -858,7 +871,7 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
                                 'fontWeight': 'bold', 'fontSize': '11px', 'color': '#1976d2', 'marginRight': '8px'})
                         )
                     card_content.append(entry['name'])
-                    
+
                     card = html.Button(
                         card_content,
                         id={'type': 'entry', 'entry_type': 'symptom',
@@ -880,21 +893,27 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
                         html.Div(str(day), style={
                             'fontWeight': 'bold', 'marginBottom': '5px', 'color': '#1976d2' if (day == today.day and today.year == year and today.month == month) else 'inherit'}) if day != 0 else "",
                         html.Div(
-                            (
-                                create_month_entry_cards(
-                                    {k: v for k, v in entries.get(f"{year}-{month:02d}-{day:02d}", {}).get('meals', {}).items()
-                                     if k is not None and str(k).strip() not in ('', 'None', 'none', 'null', '0') and k != 0},
-                                    'meal'
-                                ) if any(k is not None and str(k).strip() not in ('', 'None', 'none', 'null', '0') and k != 0 for k in entries.get(f"{year}-{month:02d}-{day:02d}", {}).get('meals', {}).keys()) else []
-                            ) + create_month_entry_cards(
-                                entries.get(
-                                    f"{year}-{month:02d}-{day:02d}", {}).get('foods', []),
-                                'food'
-                            ) + create_month_entry_cards(
-                                entries.get(
-                                    f"{year}-{month:02d}-{day:02d}", {}).get('symptoms', []),
-                                'symptom'
-                            ), style={'display': 'flex', 'flexDirection': 'column', 'gap': '2px'}) if day != 0 else ""
+                            (lambda day_data: [item['card'] for item in sorted(
+                                (
+                                    [{'type': 'meal', 'time': v['time'], 'card': card} 
+                                     for k, v in day_data.get('meals', {}).items() 
+                                     if k is not None and str(k).strip() not in ('', 'None', 'none', 'null', '0') and k != 0
+                                     for card in create_month_entry_cards({k: v}, 'meal')]
+                                ) + 
+                                (
+                                    [{'type': 'food', 'time': e['time'], 'card': card}
+                                     for e in day_data.get('foods', [])
+                                     for card in create_month_entry_cards([e], 'food')]
+                                ) + 
+                                (
+                                    [{'type': 'symptom', 'time': e['time'], 'card': card}
+                                     for e in day_data.get('symptoms', [])
+                                     for card in create_month_entry_cards([e], 'symptom')]
+                                ),
+                                key=lambda x: x['time']
+                            )])(entries.get(f"{year}-{month:02d}-{day:02d}", {}))
+                            if day != 0 else [], 
+                            style={'display': 'flex', 'flexDirection': 'column', 'gap': '2px'}) if day != 0 else ""
                     ], style=get_td_style(day)) for day in week
                 ]) for week in cal
             ])
@@ -908,9 +927,11 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
 
 @callback(
     Output('entry-modal', 'style'),
+    Output('modal-title-row', 'children'),
     Output('entry-details', 'children'),
     Output('calendar-refresh', 'data', allow_duplicate=True),
     Output('modal-close-store', 'data'),
+    Output('modal-entry-data', 'data', allow_duplicate=True),
     Input({'type': 'entry', 'entry_type': ALL, 'entry_id': ALL}, 'n_clicks'),
     Input('modal-close-btn', 'n_clicks'),
     State('entry-modal', 'style'),
@@ -921,19 +942,19 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
 def manage_entry_modal(entry_clicks, close_clicks, current_style, refresh_data, modal_close_data):
     ctx = dash.callback_context
     if not ctx.triggered:
-        return {'display': 'none'}, "", refresh_data
+        return {'display': 'none'}, "", "", refresh_data, modal_close_data, {}
 
     trigger_id = ctx.triggered[0]['prop_id']
 
     if 'modal-close-btn' in trigger_id and close_clicks > 0:
         # Only hide the modal, do not refresh the calendar
-        return {'display': 'none'}, "", refresh_data, (modal_close_data or 0) + 1
+        return {'display': 'none'}, "", "", dash.no_update, (modal_close_data or 0) + 1, {}
 
     # Check if any entry button was clicked and modal is not already open
     filtered_clicks = [click for click in (
         entry_clicks or []) if click is not None]
     if not filtered_clicks or not any(click and click == max(filtered_clicks) for click in filtered_clicks):
-        return current_style, "", refresh_data, modal_close_data
+        return current_style, "", "", dash.no_update, modal_close_data, {}
 
     # Find which entry was clicked
     if ctx.triggered and len(ctx.triggered) > 0:
@@ -955,7 +976,7 @@ def manage_entry_modal(entry_clicks, close_clicks, current_style, refresh_data, 
                     else:
                         meal_id_str = str(entry_id)
                         foods_df = pd.read_sql_query('''
-                            SELECT f.description, fle.time, fle.notes
+                            SELECT fle.id as food_entry_id, f.description, fle.time, fle.notes, fle.fdc_id
                             FROM "foodlogentry" fle
                             JOIN "food" f ON fle.fdc_id = f.fdc_id
                             WHERE fle.meal_id = %s
@@ -963,42 +984,62 @@ def manage_entry_modal(entry_clicks, close_clicks, current_style, refresh_data, 
                         ''', conn, params=(meal_id_str,))
                         if not foods_df.empty:
                             food_items = []
-                            for _, row in foods_df.iterrows():
+                            foods_list = []
+                            for idx, row in foods_df.iterrows():
                                 # Remove seconds from time
-                                time_str = str(row['time'])[:5] if len(str(row['time'])) > 5 else str(row['time'])
+                                time_str = str(row['time'])[:5] if len(
+                                    str(row['time'])) > 5 else str(row['time'])
                                 time_display = "" if time_str == '00:00' else f" ({time_str})"
-                                notes_display = f" - {row['notes']}" if row['notes'] and row['notes'].strip() else ""
+                                notes_display = f" - {row['notes']}" if row['notes'] and row['notes'].strip(
+                                ) else ""
+                                
                                 food_items.append(html.Li(
                                     f"{row['description']}{time_display}{notes_display}",
                                     style={'marginBottom': '8px', 'fontSize': '14px'}
                                 ))
-                            
-                            food_names = ', '.join(foods_df['description'].tolist())
-                            meal_time = str(foods_df.iloc[0]['time'])[:5] if len(str(foods_df.iloc[0]['time'])) > 5 else str(foods_df.iloc[0]['time'])
-                            
+                                
+                                # Store food data for editing
+                                foods_list.append({
+                                    'food_entry_id': int(row['food_entry_id']),
+                                    'description': row['description'],
+                                    'time': time_str,
+                                    'fdc_id': int(row['fdc_id'])
+                                })
+
+                            food_names = ', '.join(
+                                foods_df['description'].tolist())
+                            meal_time = str(foods_df.iloc[0]['time'])[:5] if len(
+                                str(foods_df.iloc[0]['time'])) > 5 else str(foods_df.iloc[0]['time'])
+
                             # Build content parts list
                             content_parts = []
-                            
+
                             # Only add time if not 00:00
                             if meal_time != '00:00':
                                 content_parts.append(
                                     html.Div([
-                                        html.Strong("Time:", style={'color': '#666', 'fontSize': '14px'}),
-                                        html.Span(meal_time, style={'fontSize': '16px', 'marginLeft': '8px'})
+                                        html.Strong("Time:", style={
+                                                    'color': '#666', 'fontSize': '14px'}),
+                                        html.Span(meal_time, style={
+                                                  'fontSize': '16px', 'marginLeft': '8px'})
                                     ], style={'marginBottom': '16px'})
                                 )
-                            
+
                             # Add foods list
                             content_parts.append(
                                 html.Div([
-                                    html.Strong("Foods in this meal:", style={'color': '#666', 'fontSize': '14px', 'marginBottom': '8px', 'display': 'block'}),
-                                    html.Ul(food_items, style={'paddingLeft': '20px', 'marginTop': '8px'})
+                                    html.Strong("Foods in this meal:", style={
+                                                'color': '#666', 'fontSize': '14px', 'marginBottom': '8px', 'display': 'block'}),
+                                    html.Ul(food_items, style={
+                                            'paddingLeft': '20px', 'marginTop': '8px'})
                                 ], style={'marginBottom': '16px'})
                             )
-                            
-                            details = {'content': html.Div(content_parts, style={'padding': '8px'}), 'title': food_names, 'entry_type': 'meal', 'entry_id': entry_id}
+
+                            details = {'content': html.Div(content_parts, style={
+                                                           'padding': '8px'}), 'title': food_names, 'entry_type': 'meal', 'entry_id': entry_id, 'time': meal_time, 'foods': foods_list}
                         else:
-                            details = {'content': "Meal not found", 'title': 'Meal Details'}
+                            details = {'content': "Meal not found",
+                                       'title': 'Meal Details'}
                 elif entry_type == 'food':
                     # Get food entry details with ingredients
                     food_df = pd.read_sql_query('''
@@ -1008,55 +1049,64 @@ def manage_entry_modal(entry_clicks, close_clicks, current_style, refresh_data, 
                         JOIN "dailylog" dl ON fle.daily_log_id = dl.id
                         WHERE fle.id = %s
                     ''', conn, params=(entry_id,))
-                    
+
                     if not food_df.empty:
                         food_row = food_df.iloc[0]
                         food_name = food_row['description']
                         fdc_id = food_row['fdc_id']
-                        
+
                         # Get ingredients
                         ingredients_df = pd.read_sql_query('''
                             SELECT ingredient FROM "ingredient" WHERE fdc_id = %s
                         ''', conn, params=(fdc_id,))
-                        
+
                         # Format time
-                        time_str = str(food_row['time'])[:5] if len(str(food_row['time'])) > 5 else str(food_row['time'])
-                        
+                        time_str = str(food_row['time'])[:5] if len(
+                            str(food_row['time'])) > 5 else str(food_row['time'])
+
                         content_parts = []
-                        
+
                         # Only add time if not 00:00
                         if time_str != '00:00':
                             content_parts.append(
                                 html.Div([
-                                    html.Strong("Time:", style={'color': '#666', 'fontSize': '14px'}),
-                                    html.Span(time_str, style={'fontSize': '16px', 'marginLeft': '8px'})
+                                    html.Strong("Time:", style={
+                                                'color': '#666', 'fontSize': '14px'}),
+                                    html.Span(time_str, style={
+                                              'fontSize': '16px', 'marginLeft': '8px'})
                                 ], style={'marginBottom': '12px'})
                             )
-                        
+
                         # Add ingredients section if they exist
                         if not ingredients_df.empty:
-                            ingredient_items = [html.Li(ing, style={'fontSize': '14px', 'marginBottom': '4px'}) 
-                                              for ing in ingredients_df['ingredient'].tolist()]
+                            ingredient_items = [html.Li(ing, style={'fontSize': '14px', 'marginBottom': '4px'})
+                                                for ing in ingredients_df['ingredient'].tolist()]
                             content_parts.append(
                                 html.Div([
-                                    html.Strong("Ingredients:", style={'color': '#666', 'fontSize': '14px', 'marginBottom': '8px', 'display': 'block'}),
-                                    html.Ul(ingredient_items, style={'paddingLeft': '20px', 'marginTop': '8px'})
+                                    html.Strong("Ingredients:", style={
+                                                'color': '#666', 'fontSize': '14px', 'marginBottom': '8px', 'display': 'block'}),
+                                    html.Ul(ingredient_items, style={
+                                            'paddingLeft': '20px', 'marginTop': '8px'})
                                 ], style={'marginBottom': '16px'})
                             )
-                        
+
                         # Add notes if they exist
                         if food_row['notes'] and str(food_row['notes']).strip():
                             content_parts.append(
                                 html.Div([
-                                    html.Strong("Notes:", style={'color': '#666', 'fontSize': '14px'}),
-                                    html.Div(str(food_row['notes']), style={'marginTop': '4px', 'padding': '8px', 'backgroundColor': '#f8f9fa', 'borderRadius': '4px', 'fontSize': '14px'})
+                                    html.Strong("Notes:", style={
+                                                'color': '#666', 'fontSize': '14px'}),
+                                    html.Div(str(food_row['notes']), style={
+                                             'marginTop': '4px', 'padding': '8px', 'backgroundColor': '#f8f9fa', 'borderRadius': '4px', 'fontSize': '14px'})
                                 ], style={'marginBottom': '16px'})
                             )
-                        
-                        details = {'content': html.Div([c for c in content_parts if c is not None], style={'padding': '8px'}), 'title': food_name, 'entry_type': 'food', 'entry_id': entry_id}
+
+                        details = {'content': html.Div([c for c in content_parts if c is not None], style={
+                                                       'padding': '8px'}), 'title': food_name, 'entry_type': 'food', 'entry_id': entry_id, 'time': time_str}
                     else:
-                        details = {'content': "Food entry not found", 'title': 'Food Details'}
-                        
+                        details = {'content': "Food entry not found",
+                                   'title': 'Food Details'}
+
                 elif entry_type == 'symptom':
                     df = pd.read_sql_query('''
                         SELECT s.name, sle.time, sle.severity, sle.notes, sle.id, dl.date
@@ -1068,11 +1118,12 @@ def manage_entry_modal(entry_clicks, close_clicks, current_style, refresh_data, 
                     if not df.empty:
                         row = df.iloc[0]
                         symptom_date = row['date']
-                        
+
                         # Format time display (hide if 00:00, remove seconds)
                         # If time is 00:00, check for date range
-                        time_str = str(row['time'])[:5] if len(str(row['time'])) > 5 else str(row['time'])
-                        
+                        time_str = str(row['time'])[:5] if len(
+                            str(row['time'])) > 5 else str(row['time'])
+
                         if time_str != '00:00':
                             time_display = f"Time: {time_str}"
                         else:
@@ -1080,19 +1131,21 @@ def manage_entry_modal(entry_clicks, close_clicks, current_style, refresh_data, 
                             try:
                                 # Get the symptom_id and current date for this entry
                                 with conn.cursor() as cur:
-                                    cur.execute('SELECT symptom_id, daily_log_id FROM "symptomlogentry" WHERE id = %s', (entry_id,))
+                                    cur.execute(
+                                        'SELECT symptom_id, daily_log_id FROM "symptomlogentry" WHERE id = %s', (entry_id,))
                                     symptom_info = cur.fetchone()
                                     symptom_id = symptom_info[0]
                                     daily_log_id = symptom_info[1]
-                                    
-                                    cur.execute('SELECT date FROM "dailylog" WHERE id = %s', (daily_log_id,))
+
+                                    cur.execute(
+                                        'SELECT date FROM "dailylog" WHERE id = %s', (daily_log_id,))
                                     current_date = cur.fetchone()[0]
-                                
+
                                 # Calculate date range
                                 from datetime import timedelta
                                 start_range = current_date - timedelta(days=30)
                                 end_range = current_date + timedelta(days=30)
-                                
+
                                 range_df = pd.read_sql_query('''
                                     SELECT MIN(dl.date) as start_date, MAX(dl.date) as end_date, COUNT(*) as days
                                     FROM "symptomlogentry" sle
@@ -1101,8 +1154,8 @@ def manage_entry_modal(entry_clicks, close_clicks, current_style, refresh_data, 
                                     AND sle.time = '00:00'
                                     AND sle.severity = %s
                                     AND dl.date BETWEEN %s AND %s
-                                ''', conn, params=(symptom_id, row['severity'], start_range, end_range))
-                                
+                                ''', conn, params=(int(symptom_id), int(row['severity']), start_range, end_range))
+
                                 if not range_df.empty and range_df.iloc[0]['days'] > 1:
                                     start = range_df.iloc[0]['start_date']
                                     end = range_df.iloc[0]['end_date']
@@ -1113,60 +1166,73 @@ def manage_entry_modal(entry_clicks, close_clicks, current_style, refresh_data, 
                             except Exception as e:
                                 print(f"Error getting date range: {e}")
                                 time_display = None
-                        
+
                         # Severity emoji mapping
-                        severity_emojis = {1: '', 2: '🙁', 3: '', 4: '😕', 5: '', 6: '😟', 7: '', 8: '😣', 9: '', 10: '😫'}
-                        severity_emoji = severity_emojis.get(row['severity'], '')
-                        
+                        severity_emojis = {
+                            1: '', 2: '🙁', 3: '', 4: '😕', 5: '', 6: '😟', 7: '', 8: '😣', 9: '', 10: '😫'}
+                        severity_emoji = severity_emojis.get(
+                            row['severity'], '')
+
                         # Build content components
                         content_parts = []
-                        
+
                         # Add severity
                         if row['severity']:
                             content_parts.append(
                                 html.Div([
-                                    html.Strong("Severity:", style={'color': '#666', 'fontSize': '14px'}),
-                                    html.Span(f" {severity_emoji} {row['severity']}/10", style={'fontSize': '16px', 'marginLeft': '8px'})
+                                    html.Strong("Severity:", style={
+                                                'color': '#666', 'fontSize': '14px'}),
+                                    html.Span(f" {severity_emoji} {row['severity']}/10", style={
+                                              'fontSize': '16px', 'marginLeft': '8px'})
                                 ], style={'marginBottom': '12px'})
                             )
-                        
+
                         # Add time/duration only if it exists
                         if time_display:
                             content_parts.append(
                                 html.Div([
-                                    html.Strong(time_display, style={'color': '#666', 'fontSize': '14px'})
+                                    html.Strong(time_display, style={
+                                                'color': '#666', 'fontSize': '14px'})
                                 ], style={'marginBottom': '12px'})
                             )
-                        
+
                         # Only add notes section if notes exist
                         if row['notes'] and row['notes'].strip():
                             content_parts.append(
                                 html.Div([
-                                    html.Strong("Notes:", style={'color': '#666', 'fontSize': '14px'}),
-                                    html.Div(row['notes'], style={'marginTop': '4px', 'padding': '8px', 'backgroundColor': '#f8f9fa', 'borderRadius': '4px', 'fontSize': '14px'})
+                                    html.Strong("Notes:", style={
+                                                'color': '#666', 'fontSize': '14px'}),
+                                    html.Div(row['notes'], style={
+                                             'marginTop': '4px', 'padding': '8px', 'backgroundColor': '#f8f9fa', 'borderRadius': '4px', 'fontSize': '14px'})
                                 ], style={'marginBottom': '16px'})
                             )
-                        
-                        details = {'content': html.Div([c for c in content_parts if c is not None], style={'padding': '8px'}), 'title': row['name'], 'entry_type': 'symptom', 'entry_id': entry_id}
+
+                        details = {'content': html.Div([c for c in content_parts if c is not None], style={
+                                                       'padding': '8px'}), 'title': row['name'], 'entry_type': 'symptom', 'entry_id': entry_id, 'time': time_str, 'severity': int(row['severity'])}
                     else:
-                        details = {'content': "Entry not found", 'title': 'Entry Details'}
+                        details = {'content': "Entry not found",
+                                   'title': 'Entry Details'}
                 conn.close()
                 # Return with dynamic title and delete button in title row
                 if isinstance(details, dict) and 'entry_type' in details:
                     title_row = html.Div([
-                        html.H3(details['title'], style={'color': '#1976d2', 'marginBottom': '0', 'display': 'inline-block', 'flex': '1'}),
+                        html.H3(details['title'], style={
+                                'color': '#1976d2', 'marginBottom': '0', 'display': 'inline-block', 'flex': '1'}),
                         html.Button('Delete', id={'type': 'modal-delete-entry', 'entry_type': details['entry_type'], 'entry_id': details['entry_id']},
-                                   n_clicks=0, style={'padding': '4px 12px', 'fontSize': '12px', 'backgroundColor': '#ffebee', 'color': '#d32f2f', 'border': '1px solid #ffcdd2', 'borderRadius': '4px', 'cursor': 'pointer', 'marginLeft': 'auto'})
+                                    n_clicks=0, style={'padding': '4px 12px', 'fontSize': '12px', 'backgroundColor': '#ffebee', 'color': '#d32f2f', 'border': '1px solid #ffcdd2', 'borderRadius': '4px', 'cursor': 'pointer'})
                     ], style={'display': 'flex', 'alignItems': 'center', 'marginBottom': '20px', 'paddingBottom': '8px', 'borderBottom': '2px solid #90caf9'})
-                    return {'display': 'block', 'position': 'fixed', 'zIndex': 1000, 'left': 0, 'top': 0, 'width': '100%', 'height': '100%', 'backgroundColor': 'rgba(0,0,0,0.4)'}, [title_row, details['content']], refresh_data, modal_close_data
+                    # Extract entry data for editing
+                    entry_data = {k: v for k, v in details.items() if k not in ['content', 'title']}
+                    return {'display': 'block', 'position': 'fixed', 'zIndex': 1000, 'left': 0, 'top': 0, 'width': '100%', 'height': '100%', 'backgroundColor': 'rgba(0,0,0,0.4)'}, title_row, details['content'], dash.no_update, modal_close_data, entry_data
                 elif isinstance(details, dict):
-                    return {'display': 'block', 'position': 'fixed', 'zIndex': 1000, 'left': 0, 'top': 0, 'width': '100%', 'height': '100%', 'backgroundColor': 'rgba(0,0,0,0.4)'}, [html.H3(details['title'], style={'color': '#1976d2', 'marginBottom': '20px', 'borderBottom': '2px solid #90caf9', 'paddingBottom': '8px'}), details['content']], refresh_data, modal_close_data
+                    title_row = html.H3(details['title'], style={'color': '#1976d2', 'marginBottom': '20px', 'borderBottom': '2px solid #90caf9', 'paddingBottom': '8px'})
+                    return {'display': 'block', 'position': 'fixed', 'zIndex': 1000, 'left': 0, 'top': 0, 'width': '100%', 'height': '100%', 'backgroundColor': 'rgba(0,0,0,0.4)'}, title_row, details['content'], dash.no_update, modal_close_data, {}
                 else:
-                    return {'display': 'block', 'position': 'fixed', 'zIndex': 1000, 'left': 0, 'top': 0, 'width': '100%', 'height': '100%', 'backgroundColor': 'rgba(0,0,0,0.4)'}, details, refresh_data, modal_close_data
+                    return {'display': 'block', 'position': 'fixed', 'zIndex': 1000, 'left': 0, 'top': 0, 'width': '100%', 'height': '100%', 'backgroundColor': 'rgba(0,0,0,0.4)'}, "", details, dash.no_update, modal_close_data, {}
             except Exception as e:
-                return current_style, f"Error: {e}", refresh_data, modal_close_data
+                return current_style, "", f"Error: {e}", dash.no_update, modal_close_data, {}
 
-    return current_style, "", refresh_data, modal_close_data
+    return current_style, "", "", dash.no_update, modal_close_data, {}
 
 
 @callback(
@@ -1198,19 +1264,277 @@ def delete_entry(delete_clicks, user_id, current_refresh):
     with conn.cursor() as cur:
         if entry_type == 'meal':
             cur.execute(
-                'DELETE FROM "foodlogentry" WHERE meal_id = %s AND daily_log_id IN (SELECT id FROM "dailylog" WHERE user_id = %s)', 
+                'DELETE FROM "foodlogentry" WHERE meal_id = %s AND daily_log_id IN (SELECT id FROM "dailylog" WHERE user_id = %s)',
                 (entry_id, user_id))
         elif entry_type == 'food':
             cur.execute(
-                'DELETE FROM "foodlogentry" WHERE id = %s AND daily_log_id IN (SELECT id FROM "dailylog" WHERE user_id = %s)', 
+                'DELETE FROM "foodlogentry" WHERE id = %s AND daily_log_id IN (SELECT id FROM "dailylog" WHERE user_id = %s)',
                 (entry_id, user_id))
         elif entry_type == 'symptom':
             cur.execute(
-                'DELETE FROM "symptomlogentry" WHERE id = %s AND daily_log_id IN (SELECT id FROM "dailylog" WHERE user_id = %s)', 
+                'DELETE FROM "symptomlogentry" WHERE id = %s AND daily_log_id IN (SELECT id FROM "dailylog" WHERE user_id = %s)',
                 (entry_id, user_id))
         conn.commit()
     conn.close()
     return {'display': 'none'}, (current_refresh or 0) + 1
+
+
+@callback(
+    Output('entry-details', 'children', allow_duplicate=True),
+    Output('modal-edit-mode', 'data'),
+    Output('modal-entry-data', 'data'),
+    Output('calendar-refresh', 'data', allow_duplicate=True),
+    Input('modal-edit-btn', 'n_clicks'),
+    Input({'type': 'modal-save-edit', 'index': ALL}, 'n_clicks'),
+    Input({'type': 'modal-cancel-edit', 'index': ALL}, 'n_clicks'),
+    State('modal-edit-mode', 'data'),
+    State('modal-entry-data', 'data'),
+    State({'type': 'modal-edit-time', 'index': ALL}, 'value'),
+    State({'type': 'modal-edit-severity', 'index': ALL}, 'value'),
+    State({'type': 'modal-edit-meal-name', 'index': ALL}, 'value'),
+    State({'type': 'modal-edit-food-keep', 'index': ALL}, 'value'),
+    State('calendar-refresh', 'data'),
+    prevent_initial_call=True
+)
+def handle_edit_mode(edit_clicks, save_clicks, cancel_clicks, edit_mode, entry_data, time_values, severity_values, meal_name_values, food_keep_values, refresh_data):
+    """Toggle edit mode and save changes to entry"""
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+    
+    trigger_id = ctx.triggered[0]['prop_id']
+    
+    # Cancel edit mode
+    if 'modal-cancel-edit' in trigger_id:
+        # Rebuild readonly view from entry_data
+        return build_entry_view(entry_data), False, entry_data, dash.no_update
+    
+    # Save changes
+    if 'modal-save-edit' in trigger_id and entry_data:
+        # Get edited values from State
+        new_time = time_values[0] if time_values and len(time_values) > 0 else None
+        new_severity = severity_values[0] if severity_values and len(severity_values) > 0 else None
+        
+        # Update database
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            entry_type = entry_data.get('entry_type')
+            entry_id = entry_data.get('entry_id')
+            
+            if entry_type == 'food' and new_time:
+                cur.execute(
+                    'UPDATE "foodlogentry" SET time = %s WHERE id = %s',
+                    (new_time, entry_id))
+            elif entry_type == 'meal':
+                # Update time for all food entries in the meal
+                if new_time:
+                    cur.execute(
+                        'UPDATE "foodlogentry" SET time = %s WHERE meal_id = %s',
+                        (new_time, entry_id))
+                
+                # Handle food removal - delete unchecked foods
+                foods = entry_data.get('foods', [])
+                for idx, food in enumerate(foods):
+                    if idx < len(food_keep_values):
+                        keep_values = food_keep_values[idx]
+                        if not keep_values or 'keep' not in keep_values:
+                            # Delete this food entry
+                            cur.execute(
+                                'DELETE FROM "foodlogentry" WHERE id = %s',
+                                (food['food_entry_id'],))
+                
+                # Check if any foods remain in the meal
+                cur.execute(
+                    'SELECT COUNT(*) FROM "foodlogentry" WHERE meal_id = %s',
+                    (entry_id,))
+                remaining_count = cur.fetchone()[0]
+                
+                # If no foods remain, the meal is deleted (handled by the delete cascade)
+                if remaining_count == 0:
+                    conn.commit()
+                    conn.close()
+                    # Close modal and refresh
+                    return dash.no_update, False, {}, (refresh_data or 0) + 1
+                
+                # Update foods list in entry_data
+                entry_data['foods'] = [f for idx, f in enumerate(foods) 
+                                      if idx < len(food_keep_values) and food_keep_values[idx] and 'keep' in food_keep_values[idx]]
+                
+            elif entry_type == 'symptom':
+                if new_time and new_severity:
+                    cur.execute(
+                        'UPDATE "symptomlogentry" SET time = %s, severity = %s WHERE id = %s',
+                        (new_time, int(new_severity), entry_id))
+                elif new_time:
+                    cur.execute(
+                        'UPDATE "symptomlogentry" SET time = %s WHERE id = %s',
+                        (new_time, entry_id))
+                elif new_severity:
+                    cur.execute(
+                        'UPDATE "symptomlogentry" SET severity = %s WHERE id = %s',
+                        (int(new_severity), entry_id))
+            
+            conn.commit()
+        conn.close()
+        
+        # Update entry_data with new values
+        if new_time:
+            entry_data['time'] = new_time
+        if new_severity:
+            entry_data['severity'] = int(new_severity)
+        
+        # Return updated view and trigger calendar refresh
+        return build_entry_view(entry_data), False, entry_data, (refresh_data or 0) + 1
+    
+    # Enter edit mode
+    if 'modal-edit-btn' in trigger_id and edit_clicks > 0:
+        # Build editable view
+        return build_entry_edit_view(entry_data), True, entry_data, dash.no_update
+    
+    return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+
+def build_entry_view(entry_data):
+    """Build readonly view of entry"""
+    if not entry_data:
+        return html.Div("No entry data")
+    
+    entry_type = entry_data.get('entry_type')
+    content_parts = []
+    
+    if entry_type in ['food', 'meal', 'symptom']:
+        time_str = entry_data.get('time', '00:00')
+        if time_str != '00:00':
+            content_parts.append(
+                html.Div([
+                    html.Strong("Time:", style={'color': '#666', 'fontSize': '14px'}),
+                    html.Span(time_str, style={'fontSize': '16px', 'marginLeft': '8px'})
+                ], style={'marginBottom': '12px'})
+            )
+    
+    if entry_type == 'meal':
+        foods = entry_data.get('foods', [])
+        if foods and isinstance(foods, list):
+            food_items = [html.Li(f.get('description', ''), style={'fontSize': '14px', 'marginBottom': '4px'}) 
+                         for f in foods if isinstance(f, dict)]
+            if food_items:
+                content_parts.append(
+                    html.Div([
+                        html.Strong("Foods in this meal:", style={'color': '#666', 'fontSize': '14px', 'marginBottom': '8px', 'display': 'block'}),
+                        html.Ul(food_items, style={'paddingLeft': '20px', 'marginTop': '8px'})
+                    ], style={'marginBottom': '16px'})
+                )
+    
+    if entry_type == 'symptom':
+        severity = entry_data.get('severity', 5)
+        severity_emojis = {1: '', 2: '🙁', 3: '', 4: '😕', 5: '', 6: '😟', 7: '', 8: '😣', 9: '', 10: '😫'}
+        severity_emoji = severity_emojis.get(severity, '')
+        content_parts.append(
+            html.Div([
+                html.Strong("Severity:", style={'color': '#666', 'fontSize': '14px'}),
+                html.Span(f" {severity}/10 {severity_emoji}", style={'fontSize': '16px', 'marginLeft': '8px'})
+            ], style={'marginBottom': '12px'})
+        )
+    
+    return html.Div(content_parts, style={'padding': '8px'})
+
+
+def build_entry_edit_view(entry_data):
+    """Build editable view of entry with input fields"""
+    if not entry_data:
+        return html.Div("No entry data available")
+    
+    entry_type = entry_data.get('entry_type')
+    content_parts = []
+    
+    if entry_type in ['food', 'meal', 'symptom']:
+        # Time input (using text type with placeholder for HH:MM format)
+        time_value = entry_data.get('time', '00:00')
+        content_parts.append(
+            html.Div([
+                html.Strong("Time:", style={'color': '#666', 'fontSize': '14px', 'display': 'block', 'marginBottom': '4px'}),
+                dcc.Input(
+                    id={'type': 'modal-edit-time', 'index': 0},
+                    type='text',
+                    value=time_value,
+                    placeholder='HH:MM',
+                    style={'width': '150px', 'padding': '6px', 'fontSize': '14px', 'borderRadius': '4px', 'border': '1px solid #ccc'}
+                )
+            ], style={'marginBottom': '16px'})
+        )
+    
+    if entry_type == 'meal':
+        # Meal name input
+        foods = entry_data.get('foods', [])
+        if foods and isinstance(foods, list):
+            meal_name = ', '.join([f.get('description', '') for f in foods if isinstance(f, dict)])
+        else:
+            meal_name = ''
+        content_parts.append(
+            html.Div([
+                html.Strong("Meal Name:", style={'color': '#666', 'fontSize': '14px', 'display': 'block', 'marginBottom': '4px'}),
+                dcc.Input(
+                    id={'type': 'modal-edit-meal-name', 'index': 0},
+                    type='text',
+                    value=meal_name,
+                    style={'width': '300px', 'padding': '6px', 'fontSize': '14px', 'borderRadius': '4px', 'border': '1px solid #ccc'}
+                )
+            ], style={'marginBottom': '16px'})
+        )
+        
+        # Foods list with remove buttons
+        foods = entry_data.get('foods', [])
+        if foods and isinstance(foods, list):
+            food_checkboxes = []
+            for idx, food in enumerate(foods):
+                if isinstance(food, dict):
+                    food_checkboxes.append(
+                        html.Div([
+                            dcc.Checklist(
+                                id={'type': 'modal-edit-food-keep', 'index': idx},
+                                options=[{'label': food.get('description', 'Unknown food'), 'value': 'keep'}],
+                                value=['keep'],
+                                style={'display': 'inline-block'}
+                            ),
+                            html.Span(' (uncheck to remove)', style={'fontSize': '12px', 'color': '#999', 'marginLeft': '8px'})
+                        ], style={'marginBottom': '8px'})
+                    )
+            
+            if food_checkboxes:
+                content_parts.append(
+                    html.Div([
+                        html.Strong("Foods in meal:", style={'color': '#666', 'fontSize': '14px', 'display': 'block', 'marginBottom': '8px'}),
+                        html.Div(food_checkboxes)
+                    ], style={'marginBottom': '16px'})
+                )
+    
+    if entry_type == 'symptom':
+        # Severity dropdown
+        severity_value = entry_data.get('severity', 5)
+        content_parts.append(
+            html.Div([
+                html.Strong("Severity:", style={'color': '#666', 'fontSize': '14px', 'display': 'block', 'marginBottom': '4px'}),
+                dcc.Dropdown(
+                    id={'type': 'modal-edit-severity', 'index': 0},
+                    options=[{'label': str(i), 'value': i} for i in range(1, 11)],
+                    value=severity_value,
+                    clearable=False,
+                    style={'width': '150px'}
+                )
+            ], style={'marginBottom': '16px'})
+        )
+    
+    # Action buttons
+    content_parts.append(
+        html.Div([
+            html.Button('Save', id={'type': 'modal-save-edit', 'index': 0},
+                       style={'padding': '8px 16px', 'fontSize': '14px', 'backgroundColor': '#4caf50', 'color': 'white', 'border': 'none', 'borderRadius': '4px', 'cursor': 'pointer', 'marginRight': '8px'}),
+            html.Button('Cancel', id={'type': 'modal-cancel-edit', 'index': 0},
+                       style={'padding': '8px 16px', 'fontSize': '14px', 'backgroundColor': '#f5f5f5', 'color': '#666', 'border': '1px solid #ccc', 'borderRadius': '4px', 'cursor': 'pointer'})
+        ], style={'marginTop': '20px'})
+    )
+    
+    return html.Div(content_parts, style={'padding': '8px'})
 
 
 @callback(
@@ -1227,19 +1551,19 @@ def navigate_calendar(prev_clicks, next_clicks, today_clicks, current_date, view
     ctx = dash.callback_context
     if not ctx.triggered:
         return dash.no_update
-    
+
     trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
-    
+
     # Handle "Today" button
     if trigger_id == 'calendar-today-btn':
         return date.today().isoformat()
-    
+
     # Parse current date
     if not current_date:
         base_date = date.today()
     else:
         base_date = date.fromisoformat(current_date)
-    
+
     # Navigate based on view mode and button clicked
     if trigger_id == 'calendar-prev-btn':
         if view_mode == 'day':
@@ -1265,7 +1589,7 @@ def navigate_calendar(prev_clicks, next_clicks, today_clicks, current_date, view
                 new_date = date(base_date.year, base_date.month + 1, 1)
     else:
         return dash.no_update
-    
+
     return new_date.isoformat()
 
 
@@ -1305,5 +1629,173 @@ dash.clientside_callback(
     Output('calendar-view', 'data-dummy', allow_duplicate=True),
     Input('scroll-trigger', 'data'),
     State('calendar-view-mode', 'value'),
+    prevent_initial_call=True
+)
+
+# Clientside callback to handle double-clicks on calendar and extract date/time
+dash.clientside_callback(
+    """
+    function(viewMode, calendarDate) {
+        // Add double-click listener to calendar
+        setTimeout(function() {
+            const calendarView = document.getElementById('calendar-view');
+            const hiddenBtn = document.getElementById('hidden-doubleclick-btn');
+            
+            if (!calendarView || !hiddenBtn) return;
+            
+            // Remove existing listener
+            if (calendarView._dblClickHandler) {
+                calendarView.removeEventListener('dblclick', calendarView._dblClickHandler);
+            }
+            
+            // Create new handler
+            calendarView._dblClickHandler = function(event) {
+                // Get current time
+                let now = new Date();
+                let currentTime = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+                
+                let clickData = {
+                    view_mode: viewMode,
+                    date: calendarDate,
+                    time: currentTime
+                };
+                
+                // Month view - extract date from day cell, keep current time
+                if (viewMode === 'month') {
+                    let cell = event.target.closest('td');
+                    if (cell) {
+                        let dayDiv = cell.querySelector('div');
+                        if (dayDiv && dayDiv.textContent) {
+                            let day = parseInt(dayDiv.textContent);
+                            if (day > 0 && day <= 31) {
+                                // Find the month title to get the correct year and month being displayed
+                                let monthTitleElem = document.querySelector('h4');
+                                if (monthTitleElem) {
+                                    let monthYearText = monthTitleElem.textContent.trim();
+                                    // Parse "Month YYYY" format
+                                    let dateFromTitle = new Date(monthYearText + ' 1');
+                                    clickData.date = dateFromTitle.getFullYear() + '-' + 
+                                                   String(dateFromTitle.getMonth() + 1).padStart(2, '0') + '-' + 
+                                                   String(day).padStart(2, '0');
+                                } else {
+                                    // Fallback to calendarDate if title not found
+                                    let dateObj = new Date(calendarDate);
+                                    clickData.date = dateObj.getFullYear() + '-' + 
+                                                   String(dateObj.getMonth() + 1).padStart(2, '0') + '-' + 
+                                                   String(day).padStart(2, '0');
+                                }
+                            }
+                        }
+                    }
+                    // Store and trigger for month view
+                    window._doubleClickData = clickData;
+                    hiddenBtn.click();
+                    return;
+                }
+                // Day view - extract time from position
+                else if (viewMode === 'day') {
+                    // Check if we clicked inside the hour scroll container
+                    let container = document.getElementById('day-hour-scroll');
+                    if (container && container.contains(event.target)) {
+                        // Avoid triggering on entry buttons
+                        if (event.target.closest('button[id*="entry"]')) {
+                            return;
+                        }
+                        let rect = container.getBoundingClientRect();
+                        let y = event.clientY - rect.top + container.scrollTop;
+                        let hourHeight = 90; // pixels per hour
+                        let totalMinutes = Math.floor((y / hourHeight) * 60);
+                        let hours = Math.floor(totalMinutes / 60);
+                        let minutes = totalMinutes % 60;
+                        clickData.time = String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+                        
+                        // Store and trigger
+                        window._doubleClickData = clickData;
+                        hiddenBtn.click();
+                    }
+                    return;
+                }
+                // Week view - extract date and time
+                else if (viewMode === 'week') {
+                    // Avoid triggering on entry buttons
+                    if (event.target.closest('button[id*="entry"]')) {
+                        return;
+                    }
+                    
+                    let cell = event.target.closest('td');
+                    if (cell) {
+                        let table = cell.closest('table');
+                        if (table) {
+                            let row = cell.parentElement;
+                            let cellIndex = Array.from(row.children).indexOf(cell);
+                            
+                            // Skip if it's the time label column (first column)
+                            if (cellIndex === 0) {
+                                return;
+                            }
+                            
+                            // Get the header row to find date
+                            let headerRow = table.querySelector('thead tr');
+                            if (headerRow) {
+                                let headerCells = headerRow.querySelectorAll('th');
+                                if (headerCells[cellIndex]) {
+                                    let headerText = headerCells[cellIndex].textContent.trim();
+                                    // Parse "Day DD" format to get the day number
+                                    let dayMatch = headerText.match(/(\d+)/);
+                                    if (dayMatch) {
+                                        let day = parseInt(dayMatch[1]);
+                                        let dateObj = new Date(calendarDate);
+                                        // Find the week that contains this date
+                                        let weekStart = new Date(dateObj);
+                                        weekStart.setDate(dateObj.getDate() - dateObj.getDay() + 1); // Monday
+                                        // Calculate which day of the week this is (cellIndex - 1 for 0-based after time column)
+                                        let targetDate = new Date(weekStart);
+                                        targetDate.setDate(weekStart.getDate() + (cellIndex - 1));
+                                        clickData.date = targetDate.getFullYear() + '-' + 
+                                                       String(targetDate.getMonth() + 1).padStart(2, '0') + '-' + 
+                                                       String(targetDate.getDate()).padStart(2, '0');
+                                    }
+                                }
+                            }
+                            
+                            // Get the row to determine the hour
+                            let rowIndex = Array.from(table.querySelectorAll('tbody tr')).indexOf(row);
+                            if (rowIndex >= 0) {
+                                // Each row is one hour
+                                let hour = rowIndex;
+                                // Calculate minutes from Y position within cell
+                                let rect = cell.getBoundingClientRect();
+                                let y = event.clientY - rect.top;
+                                let cellHeight = rect.height;
+                                let minuteFraction = y / cellHeight;
+                                let minutes = Math.floor(minuteFraction * 60);
+                                clickData.time = String(hour).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+                            }
+                        }
+                        
+                        // Store and trigger
+                        window._doubleClickData = clickData;
+                        hiddenBtn.click();
+                    }
+                    return;
+                }
+                
+                // Store the click data in a global variable
+                window._doubleClickData = clickData;
+                
+                // Trigger the hidden button
+                hiddenBtn.click();
+            };
+            
+            // Add the listener
+            calendarView.addEventListener('dblclick', calendarView._dblClickHandler);
+        }, 500);
+        
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output('calendar-view', 'data-doubleclick', allow_duplicate=True),
+    Input('calendar-view-mode', 'value'),
+    Input('calendar-date', 'data'),
     prevent_initial_call=True
 )

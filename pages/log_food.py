@@ -15,45 +15,55 @@ layout = html.Div([
             html.Div([
                 dcc.Input(id='food-search-input', type='text',
                           placeholder='Search for foods...', style={'width': 'calc(100% - 120px)', 'marginRight': '8px'}),
-                html.Button('Search', id='food-search-btn', n_clicks=0, style={'width': '100px'})
+                html.Button('Search', id='food-search-btn',
+                            n_clicks=0, style={'width': '100px'})
             ], style={'display': 'flex', 'alignItems': 'center', 'marginBottom': '16px'}),
-            html.Div(id='food-search-results', style={'marginBottom': '16px'}),
+            dcc.Loading(
+                id='loading-search-results',
+                type='circle',
+                color='#1976d2',
+                children=html.Div(id='food-search-results', style={'marginBottom': '16px'})
+            ),
             html.Label("Selected Foods:"),
-            html.Ul(id='selected-foods-list', style={'minHeight': '60px', 'padding': '12px', 'backgroundColor': '#f0f0f0', 'borderRadius': '4px', 'border': '1px solid #e0e0e0'}),
+            html.Ul(id='selected-foods-list', style={'minHeight': '60px', 'padding': '12px',
+                    'backgroundColor': '#f0f0f0', 'borderRadius': '4px', 'border': '1px solid #e0e0e0'}),
         ], style={'marginBottom': '24px', 'padding': '24px', 'backgroundColor': 'white', 'borderRadius': '8px', 'boxShadow': '0 2px 4px rgba(0,0,0,0.1)'}),
-        
+
         html.Div([
             html.H3("Meal Details"),
             html.Div([
                 html.Div([
                     html.Label("Date:"),
                     dcc.DatePickerSingle(
-                        id='meal-date', date=datetime.now().date()),
+                        id='meal-date'),
                 ], style={'display': 'inline-block', 'marginRight': '16px'}),
                 html.Div([
                     html.Label("Time:"),
                     dcc.Input(id='meal-time', type='text', placeholder='HH:MM',
-                              value=datetime.now().strftime('%H:%M'), style={'width': '120px'}),
+                              style={'width': '120px'}),
                 ], style={'display': 'inline-block', 'verticalAlign': 'top'}),
             ]),
             html.Label("Save This Combination as a New Food Item (Optional):"),
             html.Div([
                 dcc.Input(id='meal-name', type='text',
-                          placeholder='Enter a name for this food combination...', 
+                          placeholder='Enter a name for this food combination...',
                           style={'width': 'calc(100% - 140px)', 'marginRight': '8px'}),
-                html.Button('+ Save to DB', id='save-to-db-btn', n_clicks=0, 
-                           style={'width': '130px', 'height': '38px'})
+                html.Button('+ Save to DB', id='save-to-db-btn', n_clicks=0,
+                            style={'width': '130px', 'height': '38px'})
             ], style={'display': 'flex', 'alignItems': 'center', 'marginBottom': '8px'}),
-            html.Div(id='save-to-db-status', style={'fontSize': '13px', 'color': '#666', 'marginBottom': '8px'}),
-            html.Label("Notes (Optional):", style={'marginTop': '16px', 'fontSize': '14px', 'fontWeight': '500'}),
+            html.Div(id='save-to-db-status',
+                     style={'fontSize': '13px', 'color': '#666', 'marginBottom': '8px'}),
+            html.Label("Notes (Optional):", style={
+                       'marginTop': '16px', 'fontSize': '14px', 'fontWeight': '500'}),
             dcc.Textarea(id='meal-notes',
-                         placeholder='Add any additional details about this meal...', 
+                         placeholder='Add any additional details about this meal...',
                          style={'minHeight': '100px'}),
         ], style={'marginBottom': '24px', 'padding': '24px', 'backgroundColor': 'white', 'borderRadius': '8px', 'boxShadow': '0 2px 4px rgba(0,0,0,0.1)'}),
-        
-        html.Button('Save Meal', id='save-meal-btn', n_clicks=0, 
-                   style={'width': '100%', 'padding': '12px', 'fontSize': '16px'}),
-        html.Div(id='meal-status', style={'marginTop': '16px', 'textAlign': 'center', 'fontWeight': 'bold'})
+
+        html.Button('Save Meal', id='save-meal-btn', n_clicks=0,
+                    style={'width': '100%', 'padding': '12px', 'fontSize': '16px'}),
+        html.Div(id='meal-status', style={'marginTop': '16px',
+                 'textAlign': 'center', 'fontWeight': 'bold'})
     ], style={'maxWidth': '1000px', 'margin': '0 auto', 'padding': '24px'}),
 
     dcc.Store(id='selected-foods', data=[]),
@@ -62,7 +72,35 @@ layout = html.Div([
     dcc.Store(id='total-pages', data=1),
     dcc.Store(id='viewed-ingredients', data=None),
     dcc.Store(id='saved-meal-fdc', data=None),
+    dcc.Store(id='add-entry-click-data', data={}, storage_type='session'),
 ])
+
+
+@callback(
+    Output('meal-date', 'date'),
+    Output('meal-time', 'value'),
+    Input('url', 'pathname'),
+    State('url', 'search'),
+    prevent_initial_call=False
+)
+def populate_from_url_params(pathname, search):
+    """Populate date and time from URL query parameters when first loading the page"""
+    print(f"DEBUG log_food: pathname={pathname}, URL search params: {search}")
+    
+    # Only process if we're on the log-food page and have URL params
+    if pathname == '/log-food' and search:
+        from urllib.parse import parse_qs
+        params = parse_qs(search.lstrip('?'))
+        print(f"DEBUG log_food: Parsed params: {params}")
+        
+        if 'date' in params and 'time' in params:
+            date_val = params['date'][0]
+            time_val = params['time'][0]
+            print(f"DEBUG log_food: Setting from URL date={date_val}, time={time_val}")
+            return date_val, time_val
+    
+    # Return no_update to preserve existing values
+    return dash.no_update, dash.no_update
 
 
 def create_paginated_table(results, current_page, total_pages, viewed_ingredients=None):
@@ -70,30 +108,39 @@ def create_paginated_table(results, current_page, total_pages, viewed_ingredient
     end_idx = start_idx + 10
     page_results = results[start_idx:end_idx]
 
+    # Get all fdc_ids for this page and check which have ingredients in ONE query
+    fdc_ids = [row['fdc_id'] for row in page_results]
+    foods_with_ingredients = set()
+    
+    if fdc_ids:
+        try:
+            conn = get_db_connection()
+            placeholders = ', '.join(['%s'] * len(fdc_ids))
+            with conn.cursor() as cur:
+                cur.execute(
+                    f'SELECT DISTINCT fdc_id FROM "ingredient" WHERE fdc_id IN ({placeholders})', 
+                    fdc_ids
+                )
+                foods_with_ingredients = {row[0] for row in cur.fetchall()}
+            conn.close()
+        except psycopg2.Error:
+            pass
+
     # Create table with add and view ingredients buttons
     table_rows = []
     for row in page_results:
-        # Check if food has ingredients
-        try:
-            conn = get_db_connection()
-            with conn.cursor() as cur:
-                cur.execute(
-                    'SELECT COUNT(*) FROM "ingredient" WHERE fdc_id = %s', (row['fdc_id'],))
-                has_ingredients = cur.fetchone()[0] > 0
-            conn.close()
-        except psycopg2.Error:
-            has_ingredients = False
+        has_ingredients = row['fdc_id'] in foods_with_ingredients
 
         buttons = [html.Button('Add to Meal', id={
-                               'type': 'add-to-meal', 'fdc_id': row['fdc_id']}, n_clicks=0, 
-                               className='btn-primary', 
+                               'type': 'add-to-meal', 'fdc_id': row['fdc_id']}, n_clicks=0,
+                               className='btn-primary',
                                style={'padding': '6px 12px', 'fontSize': '13px'})]
         if has_ingredients:
             button_text = 'Hide Ingredients' if viewed_ingredients == row[
                 'fdc_id'] else 'View Ingredients'
             buttons.append(html.Button(button_text, id={
-                           'type': 'view-ingredients', 'fdc_id': row['fdc_id']}, n_clicks=0, 
-                           style={'marginLeft': '8px', 'padding': '6px 12px', 'fontSize': '13px'}))
+                           'type': 'view-ingredients', 'fdc_id': row['fdc_id']}, n_clicks=0,
+                style={'marginLeft': '8px', 'padding': '6px 12px', 'fontSize': '13px'}))
 
         table_rows.append(html.Tr([
             html.Td(row['description'], style={'padding': '8px'}),
@@ -103,11 +150,12 @@ def create_paginated_table(results, current_page, total_pages, viewed_ingredient
 
     table = html.Div([
         html.Table([
-        html.Thead(
-            html.Tr([html.Th('Food', style={'padding': '10px', 'textAlign': 'left', 'backgroundColor': '#f8f9fa', 'borderBottom': '2px solid #1976d2', 'color': '#1976d2', 'fontWeight': '600'}), 
-                     html.Th('Category', style={'padding': '10px', 'textAlign': 'left', 'backgroundColor': '#f8f9fa', 'borderBottom': '2px solid #1976d2', 'color': '#1976d2', 'fontWeight': '600'}), 
+            html.Thead(
+                html.Tr([html.Th('Food', style={'padding': '10px', 'textAlign': 'left', 'backgroundColor': '#f8f9fa', 'borderBottom': '2px solid #1976d2', 'color': '#1976d2', 'fontWeight': '600'}),
+                     html.Th('Category', style={'padding': '10px', 'textAlign': 'left', 'backgroundColor': '#f8f9fa',
+                             'borderBottom': '2px solid #1976d2', 'color': '#1976d2', 'fontWeight': '600'}),
                      html.Th('Actions', style={'padding': '10px', 'textAlign': 'left', 'backgroundColor': '#f8f9fa', 'borderBottom': '2px solid #1976d2', 'color': '#1976d2', 'fontWeight': '600'})])),
-        html.Tbody(table_rows)
+            html.Tbody(table_rows)
         ], style={'width': '100%', 'maxWidth': '900px', 'border': '1px solid #e0e0e0', 'borderCollapse': 'collapse', 'borderRadius': '4px', 'overflow': 'hidden'})
     ], style={'display': 'flex', 'justifyContent': 'center'})
 
@@ -172,22 +220,23 @@ def save_combination_to_database(n_clicks, meal_name, selected_foods):
     if n_clicks > 0:
         if not meal_name or not meal_name.strip():
             return "⚠️ Please enter a name for this food combination.", dash.no_update, dash.no_update
-        
+
         if not selected_foods or len(selected_foods) == 0:
             return "⚠️ Please select at least one food item.", dash.no_update, dash.no_update
-        
+
         meal_name = meal_name.strip()
-        
+
         try:
             conn = get_db_connection()
             with conn.cursor() as cur:
                 # Check if a food with this name already exists
-                cur.execute('SELECT fdc_id FROM "food" WHERE description = %s', (meal_name,))
+                cur.execute(
+                    'SELECT fdc_id FROM "food" WHERE description = %s', (meal_name,))
                 existing = cur.fetchone()
-                
+
                 if existing:
                     return f"⚠️ A food item named '{meal_name}' already exists in the database.", dash.no_update, dash.no_update
-                
+
                 # Collect all ingredients from selected foods
                 ingredients = set()
                 for item in selected_foods:
@@ -195,27 +244,27 @@ def save_combination_to_database(n_clicks, meal_name, selected_foods):
                         cur.execute(
                             'SELECT ingredient FROM "ingredient" WHERE fdc_id = %s', (item['fdc_id'],))
                         ingredients.update([row[0] for row in cur.fetchall()])
-                
+
                 # Create new food entry
                 cur.execute(
-                    'INSERT INTO "food" (description, category) VALUES (%s, %s) RETURNING fdc_id', 
+                    'INSERT INTO "food" (description, category) VALUES (%s, %s) RETURNING fdc_id',
                     (meal_name, 'Meal'))
                 meal_fdc_id = cur.fetchone()[0]
-                
+
                 # Add ingredients to the new food
                 for ing in ingredients:
                     cur.execute(
-                        'INSERT INTO "ingredient" (fdc_id, ingredient) VALUES (%s, %s)', 
+                        'INSERT INTO "ingredient" (fdc_id, ingredient) VALUES (%s, %s)',
                         (meal_fdc_id, ing))
-                
+
                 conn.commit()
             conn.close()
-            
+
             return f"✓ '{meal_name}' saved to database successfully!", meal_fdc_id, ""
-            
+
         except psycopg2.Error as e:
             return f"⚠️ Database error: {e}", dash.no_update, dash.no_update
-    
+
     return "", dash.no_update, dash.no_update
 
 

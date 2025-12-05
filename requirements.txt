@@ -3,3 +3,5 @@ dash
 plotly
 psycopg2-binary
 python-dotenv
+scipy
+numpy

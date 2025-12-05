@@ -1,9 +1,35 @@
 import dash
-from dash import html, dcc, Input, Output, State
-from dash import callback
+from dash import html, dcc, Input, Output, State, callback
 import psycopg2
 from datetime import datetime
 from backend.utils import get_db_connection
+
+
+@callback(
+    Output('symptom-date', 'date'),
+    Output('symptom-time', 'value'),
+    Input('url', 'pathname'),
+    State('url', 'search'),
+    prevent_initial_call=False
+)
+def populate_from_url_params(pathname, search):
+    """Populate date and time from URL query parameters when first loading the page"""
+    print(f"DEBUG log_symptom: pathname={pathname}, URL search params: {search}")
+    
+    # Only process if we're on the log-symptom page and have URL params
+    if pathname == '/log-symptom' and search:
+        from urllib.parse import parse_qs
+        params = parse_qs(search.lstrip('?'))
+        print(f"DEBUG log_symptom: Parsed params: {params}")
+        
+        if 'date' in params and 'time' in params:
+            date_val = params['date'][0]
+            time_val = params['time'][0]
+            print(f"DEBUG log_symptom: Setting from URL date={date_val}, time={time_val}")
+            return date_val, time_val
+    
+    # Return no_update to preserve existing values
+    return dash.no_update, dash.no_update
 
 
 @callback(
@@ -22,19 +48,20 @@ def update_symptom_options(search_value, current_value):
             cur.execute('SELECT name FROM "symptom" ORDER BY name LIMIT 50')
         symptoms = cur.fetchall()
     conn.close()
-    
+
     options = [{"label": s[0], "value": s[0]} for s in symptoms]
-    
+
     # If search_value exists and doesn't match any existing symptom exactly, add it as an option
     if search_value and search_value.strip():
         search_title = search_value.strip().title()
         if not any(opt['value'].lower() == search_title.lower() for opt in options):
-            options.insert(0, {"label": f"➕ Add new: {search_title}", "value": search_title})
-    
+            options.insert(
+                0, {"label": f"➕ Add new: {search_title}", "value": search_title})
+
     # If there's a current value, make sure it's in the options
     if current_value and not any(opt['value'] == current_value for opt in options):
         options.append({"label": current_value, "value": current_value})
-    
+
     return options
 
 
@@ -46,15 +73,16 @@ def update_symptom_options(search_value, current_value):
 def show_symptom_info(symptom_value):
     if not symptom_value:
         return ""
-    
+
     # Check if symptom exists in database
     try:
         conn = get_db_connection()
         with conn.cursor() as cur:
-            cur.execute('SELECT name FROM "symptom" WHERE name = %s', (symptom_value,))
+            cur.execute(
+                'SELECT name FROM "symptom" WHERE name = %s', (symptom_value,))
             exists = cur.fetchone() is not None
         conn.close()
-        
+
         if exists:
             return "✓ Existing symptom"
         else:
@@ -72,72 +100,98 @@ layout = html.Div([
             html.H3("Symptom Information"),
             html.Label("What symptom are you experiencing?"),
             dcc.Dropdown(id='symptom-dropdown',
-                         placeholder='Select or type a new symptom...', 
-                         options=[], 
+                         placeholder='Select or type a new symptom...',
+                         options=[],
                          searchable=True,
-                         clearable=True),
-            html.Div(id='symptom-info', style={'fontSize': '12px', 'color': '#666', 'marginTop': '4px'}),
+                         clearable=True,
+                         optionHeight=50,
+                         persistence=True,
+                         persistence_type='memory'),
+            html.Div(id='symptom-info',
+                     style={'fontSize': '12px', 'color': '#666', 'marginTop': '4px'}),
         ], style={'marginBottom': '24px', 'padding': '24px', 'backgroundColor': 'white', 'borderRadius': '8px', 'boxShadow': '0 2px 4px rgba(0,0,0,0.1)'}),
-        
+
         html.Div([
             html.H3("Severity Level"),
             html.Label("How severe is this symptom?"),
-        dcc.RadioItems(
-            id='symptom-severity',
-            options=[
-                {'label': html.Div([
-                    html.Div('', style={'fontSize': '32px', 'height': '40px', 'marginBottom': '4px'}),
-                    html.Div('1', style={'fontSize': '14px', 'fontWeight': 'bold', 'marginTop': '4px'})
-                ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 1},
-                {'label': html.Div([
-                    html.Div('🙁', style={'fontSize': '32px', 'height': '40px', 'lineHeight': '40px', 'marginBottom': '4px'}),
-                    html.Div('2', style={'fontSize': '14px', 'fontWeight': 'bold', 'marginTop': '4px'})
-                ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 2},
-                {'label': html.Div([
-                    html.Div('', style={'fontSize': '32px', 'height': '40px', 'marginBottom': '4px'}),
-                    html.Div('3', style={'fontSize': '14px', 'fontWeight': 'bold', 'marginTop': '4px'})
-                ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 3},
-                {'label': html.Div([
-                    html.Div('😕', style={'fontSize': '32px', 'height': '40px', 'lineHeight': '40px', 'marginBottom': '4px'}),
-                    html.Div('4', style={'fontSize': '14px', 'fontWeight': 'bold', 'marginTop': '4px'})
-                ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 4},
-                {'label': html.Div([
-                    html.Div('', style={'fontSize': '32px', 'height': '40px', 'marginBottom': '4px'}),
-                    html.Div('5', style={'fontSize': '14px', 'fontWeight': 'bold', 'marginTop': '4px'})
-                ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 5},
-                {'label': html.Div([
-                    html.Div('😟', style={'fontSize': '32px', 'height': '40px', 'lineHeight': '40px', 'marginBottom': '4px'}),
-                    html.Div('6', style={'fontSize': '14px', 'fontWeight': 'bold', 'marginTop': '4px'})
-                ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 6},
-                {'label': html.Div([
-                    html.Div('', style={'fontSize': '32px', 'height': '40px', 'marginBottom': '4px'}),
-                    html.Div('7', style={'fontSize': '14px', 'fontWeight': 'bold', 'marginTop': '4px'})
-                ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 7},
-                {'label': html.Div([
-                    html.Div('😣', style={'fontSize': '32px', 'height': '40px', 'lineHeight': '40px', 'marginBottom': '4px'}),
-                    html.Div('8', style={'fontSize': '14px', 'fontWeight': 'bold', 'marginTop': '4px'})
-                ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 8},
-                {'label': html.Div([
-                    html.Div('', style={'fontSize': '32px', 'height': '40px', 'marginBottom': '4px'}),
-                    html.Div('9', style={'fontSize': '14px', 'fontWeight': 'bold', 'marginTop': '4px'})
-                ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 9},
-                {'label': html.Div([
-                    html.Div('😫', style={'fontSize': '32px', 'height': '40px', 'lineHeight': '40px', 'marginBottom': '4px'}),
-                    html.Div('10', style={'fontSize': '14px', 'fontWeight': 'bold', 'marginTop': '4px'})
-                ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 10}
-            ],
-            value=6,
-            inline=True,
-            labelStyle={'display': 'inline-flex', 'flexDirection': 'column', 'alignItems': 'center', 'margin': '0 8px', 'cursor': 'pointer'},
-            inputStyle={'margin': '4px 0'},
-            style={'textAlign': 'center', 'margin': '16px 0'}
-        ), ], style={'marginBottom': '24px', 'padding': '24px', 'backgroundColor': 'white', 'borderRadius': '8px', 'boxShadow': '0 2px 4px rgba(0,0,0,0.1)'}),
-        
+            dcc.RadioItems(
+                id='symptom-severity',
+                options=[
+                    {'label': html.Div([
+                        html.Div('', style={'fontSize': '32px',
+                                            'height': '40px', 'marginBottom': '4px'}),
+                        html.Div('1', style={'fontSize': '14px',
+                                             'fontWeight': 'bold', 'marginTop': '4px'})
+                    ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 1},
+                    {'label': html.Div([
+                        html.Div('🙁', style={
+                            'fontSize': '32px', 'height': '40px', 'lineHeight': '40px', 'marginBottom': '4px'}),
+                        html.Div('2', style={'fontSize': '14px',
+                                             'fontWeight': 'bold', 'marginTop': '4px'})
+                    ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 2},
+                    {'label': html.Div([
+                        html.Div('', style={'fontSize': '32px',
+                                            'height': '40px', 'marginBottom': '4px'}),
+                        html.Div('3', style={'fontSize': '14px',
+                                             'fontWeight': 'bold', 'marginTop': '4px'})
+                    ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 3},
+                    {'label': html.Div([
+                        html.Div('😕', style={
+                            'fontSize': '32px', 'height': '40px', 'lineHeight': '40px', 'marginBottom': '4px'}),
+                        html.Div('4', style={'fontSize': '14px',
+                                             'fontWeight': 'bold', 'marginTop': '4px'})
+                    ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 4},
+                    {'label': html.Div([
+                        html.Div('', style={'fontSize': '32px',
+                                            'height': '40px', 'marginBottom': '4px'}),
+                        html.Div('5', style={'fontSize': '14px',
+                                             'fontWeight': 'bold', 'marginTop': '4px'})
+                    ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 5},
+                    {'label': html.Div([
+                        html.Div('😟', style={
+                            'fontSize': '32px', 'height': '40px', 'lineHeight': '40px', 'marginBottom': '4px'}),
+                        html.Div('6', style={'fontSize': '14px',
+                                             'fontWeight': 'bold', 'marginTop': '4px'})
+                    ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 6},
+                    {'label': html.Div([
+                        html.Div('', style={'fontSize': '32px',
+                                            'height': '40px', 'marginBottom': '4px'}),
+                        html.Div('7', style={'fontSize': '14px',
+                                             'fontWeight': 'bold', 'marginTop': '4px'})
+                    ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 7},
+                    {'label': html.Div([
+                        html.Div('😣', style={
+                            'fontSize': '32px', 'height': '40px', 'lineHeight': '40px', 'marginBottom': '4px'}),
+                        html.Div('8', style={'fontSize': '14px',
+                                             'fontWeight': 'bold', 'marginTop': '4px'})
+                    ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 8},
+                    {'label': html.Div([
+                        html.Div('', style={'fontSize': '32px',
+                                            'height': '40px', 'marginBottom': '4px'}),
+                        html.Div('9', style={'fontSize': '14px',
+                                             'fontWeight': 'bold', 'marginTop': '4px'})
+                    ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 9},
+                    {'label': html.Div([
+                        html.Div('😫', style={
+                            'fontSize': '32px', 'height': '40px', 'lineHeight': '40px', 'marginBottom': '4px'}),
+                        html.Div('10', style={
+                            'fontSize': '14px', 'fontWeight': 'bold', 'marginTop': '4px'})
+                    ], style={'textAlign': 'center', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'}), 'value': 10}
+                ],
+                value=6,
+                inline=True,
+                labelStyle={'display': 'inline-flex', 'flexDirection': 'column',
+                            'alignItems': 'center', 'margin': '0 8px', 'cursor': 'pointer'},
+                inputStyle={'margin': '4px 0'},
+                style={'textAlign': 'center', 'margin': '16px 0'}
+            ), ], style={'marginBottom': '24px', 'padding': '24px', 'backgroundColor': 'white', 'borderRadius': '8px', 'boxShadow': '0 2px 4px rgba(0,0,0,0.1)'}),
+
         html.Div([
             html.H3("Symptom Details"),
             dcc.Checklist(
                 id='date-range-toggle',
-                options=[{'label': ' Symptom lasted multiple days', 'value': 'range'}],
+                options=[
+                    {'label': ' Symptom lasted multiple days', 'value': 'range'}],
                 value=[],
                 style={'marginBottom': '12px'}
             ),
@@ -145,7 +199,7 @@ layout = html.Div([
                 html.Div([
                     html.Label("Start Date:"),
                     dcc.DatePickerSingle(
-                        id='symptom-date', date=datetime.now().date()),
+                        id='symptom-date'),
                 ], style={'display': 'inline-block', 'marginRight': '16px'}),
                 html.Div([
                     html.Label("End Date:"),
@@ -155,19 +209,23 @@ layout = html.Div([
                 html.Div([
                     html.Label("Time:"),
                     dcc.Input(id='symptom-time', type='text', placeholder='HH:MM',
-                              value=datetime.now().strftime('%H:%M'), style={'width': '120px'}),
+                              style={'width': '120px'}),
                 ], id='time-container', style={'display': 'inline-block', 'verticalAlign': 'top'}),
             ]),
-            html.Label("Notes (Optional):", style={'marginTop': '16px', 'fontSize': '14px', 'fontWeight': '500'}),
+            html.Label("Notes (Optional):", style={
+                       'marginTop': '16px', 'fontSize': '14px', 'fontWeight': '500'}),
             dcc.Textarea(id='symptom-notes',
-                         placeholder='Add any additional details about this symptom...', 
+                         placeholder='Add any additional details about this symptom...',
                          style={'minHeight': '100px'}),
         ], style={'marginBottom': '24px', 'padding': '24px', 'backgroundColor': 'white', 'borderRadius': '8px', 'boxShadow': '0 2px 4px rgba(0,0,0,0.1)'}),
-        
-        html.Button('Save Symptom', id='save-symptom-btn', n_clicks=0, 
-                   style={'width': '100%', 'padding': '12px', 'fontSize': '16px'}),
-        html.Div(id='symptom-status', style={'marginTop': '16px', 'textAlign': 'center', 'fontWeight': 'bold'})
-    ], style={'maxWidth': '1000px', 'margin': '0 auto', 'padding': '24px'})
+
+        html.Button('Save Symptom', id='save-symptom-btn', n_clicks=0,
+                    style={'width': '100%', 'padding': '12px', 'fontSize': '16px'}),
+        html.Div(id='symptom-status',
+                 style={'marginTop': '16px', 'textAlign': 'center', 'fontWeight': 'bold'})
+    ], style={'maxWidth': '1000px', 'margin': '0 auto', 'padding': '24px'}),
+    
+    dcc.Store(id='add-entry-click-data', data={}, storage_type='session'),
 ])
 
 
@@ -204,7 +262,7 @@ def save_symptom(n_clicks, symptom_name, severity, start_date, end_date, time, n
         try:
             # Convert symptom name to Title Case
             symptom_name = symptom_name.strip().title()
-            
+
             conn = get_db_connection()
             with conn.cursor() as cur:
                 cur.execute(
@@ -215,41 +273,42 @@ def save_symptom(n_clicks, symptom_name, severity, start_date, end_date, time, n
 
                 # Check if date range is enabled
                 is_date_range = 'range' in date_range_toggle
-                
+
                 if is_date_range and end_date:
                     # Handle date range - create entry for each day
                     try:
                         from datetime import timedelta
-                        start = datetime.strptime(start_date, '%Y-%m-%d').date()
+                        start = datetime.strptime(
+                            start_date, '%Y-%m-%d').date()
                         end = datetime.strptime(end_date, '%Y-%m-%d').date()
-                        
+
                         if end < start:
                             return "⚠️ End date must be after start date."
-                        
+
                         current_date = start
                         entries_created = 0
-                        
+
                         while current_date <= end:
                             cur.execute(
-                                'INSERT INTO "dailylog" (user_id, date) VALUES (%s, %s) ON CONFLICT (user_id, date) DO NOTHING', 
+                                'INSERT INTO "dailylog" (user_id, date) VALUES (%s, %s) ON CONFLICT (user_id, date) DO NOTHING',
                                 (user_id, current_date))
                             cur.execute(
-                                'SELECT id FROM "dailylog" WHERE user_id = %s AND date = %s', 
+                                'SELECT id FROM "dailylog" WHERE user_id = %s AND date = %s',
                                 (user_id, current_date))
                             daily_log_id = cur.fetchone()[0]
-                            
+
                             # Use 00:00 for date range entries
                             cur.execute(
                                 'INSERT INTO "symptomlogentry" (daily_log_id, symptom_id, time, severity, notes) VALUES (%s, %s, %s, %s, %s)',
                                 (daily_log_id, symptom_id, '00:00', severity, notes))
-                            
+
                             entries_created += 1
                             current_date += timedelta(days=1)
-                        
+
                         conn.commit()
                         days_text = "day" if entries_created == 1 else "days"
                         return f"✓ Symptom '{symptom_name}' logged for {entries_created} {days_text}!"
-                        
+
                     except Exception as e:
                         return f"⚠️ Error processing date range: {e}"
                 else:
@@ -267,10 +326,10 @@ def save_symptom(n_clicks, symptom_name, severity, start_date, end_date, time, n
                     symptom_time = logged_time.strftime('%H:%M')
 
                     cur.execute(
-                        'INSERT INTO "dailylog" (user_id, date) VALUES (%s, %s) ON CONFLICT (user_id, date) DO NOTHING', 
+                        'INSERT INTO "dailylog" (user_id, date) VALUES (%s, %s) ON CONFLICT (user_id, date) DO NOTHING',
                         (user_id, symptom_date))
                     cur.execute(
-                        'SELECT id FROM "dailylog" WHERE user_id = %s AND date = %s', 
+                        'SELECT id FROM "dailylog" WHERE user_id = %s AND date = %s',
                         (user_id, symptom_date))
                     daily_log_id = cur.fetchone()[0]
 
@@ -279,7 +338,7 @@ def save_symptom(n_clicks, symptom_name, severity, start_date, end_date, time, n
                         (daily_log_id, symptom_id, symptom_time, severity, notes))
                     conn.commit()
                     return f"✓ Symptom '{symptom_name}' logged!"
-                    
+
             conn.close()
         except psycopg2.Error as e:
             return f"⚠️ Database error: {e}"

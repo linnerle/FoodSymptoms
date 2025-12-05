@@ -8,24 +8,29 @@ dash.register_page(__name__, path='/settings', order=5)
 layout = html.Div([
     dcc.Location(id='logout-redirect', refresh=True),
 
-    html.Div([
-        html.H2("User Settings"),
-        html.Label("Username:"),
-        dcc.Input(id='username-input', type='text',
-                  placeholder='Enter username'),
-        html.Label("Email:"),
-        dcc.Input(id='email-input', type='email',
-                  placeholder='Enter email'),
-        html.Label("Password:"),
-        dcc.Input(id='password-input', type='password',
-                  placeholder='Enter new password (leave blank to keep current)'),
-        html.Button('Save Settings',
-                    id='save-settings-btn', n_clicks=0),
-        html.Div(id='settings-status'),
-        html.Hr(),
-        html.Button('Logout', id='logout-btn', n_clicks=0,
-                    style={'backgroundColor': 'red', 'color': 'white'})
-    ])
+    dcc.Loading(
+        id='loading-settings',
+        type='circle',
+        color='#1976d2',
+        children=html.Div([
+            html.H2("User Settings"),
+            html.Label("Username:"),
+            dcc.Input(id='username-input', type='text',
+                      placeholder='Enter username'),
+            html.Label("Email:"),
+            dcc.Input(id='email-input', type='email',
+                      placeholder='Enter email'),
+            html.Label("Password:"),
+            dcc.Input(id='password-input', type='password',
+                      placeholder='Enter new password (leave blank to keep current)'),
+            html.Button('Save Settings',
+                        id='save-settings-btn', n_clicks=0),
+            html.Div(id='settings-status'),
+            html.Hr(),
+            html.Button('Logout', id='logout-btn', n_clicks=0,
+                        style={'backgroundColor': 'red', 'color': 'white'})
+        ])
+    )
 ])
 
 
