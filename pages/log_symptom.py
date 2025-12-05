@@ -14,20 +14,22 @@ from backend.utils import get_db_connection
 )
 def populate_from_url_params(pathname, search):
     """Populate date and time from URL query parameters when first loading the page"""
-    print(f"DEBUG log_symptom: pathname={pathname}, URL search params: {search}")
-    
+    print(
+        f"DEBUG log_symptom: pathname={pathname}, URL search params: {search}")
+
     # Only process if we're on the log-symptom page and have URL params
     if pathname == '/log-symptom' and search:
         from urllib.parse import parse_qs
         params = parse_qs(search.lstrip('?'))
         print(f"DEBUG log_symptom: Parsed params: {params}")
-        
+
         if 'date' in params and 'time' in params:
             date_val = params['date'][0]
             time_val = params['time'][0]
-            print(f"DEBUG log_symptom: Setting from URL date={date_val}, time={time_val}")
+            print(
+                f"DEBUG log_symptom: Setting from URL date={date_val}, time={time_val}")
             return date_val, time_val
-    
+
     # Return no_update to preserve existing values
     return dash.no_update, dash.no_update
 
@@ -224,7 +226,7 @@ layout = html.Div([
         html.Div(id='symptom-status',
                  style={'marginTop': '16px', 'textAlign': 'center', 'fontWeight': 'bold'})
     ], style={'maxWidth': '1000px', 'margin': '0 auto', 'padding': '24px'}),
-    
+
     dcc.Store(id='add-entry-click-data', data={}, storage_type='session'),
 ])
 
@@ -306,6 +308,11 @@ def save_symptom(n_clicks, symptom_name, severity, start_date, end_date, time, n
                             current_date += timedelta(days=1)
 
                         conn.commit()
+                        
+                        # Invalidate user cache so fresh data is loaded next time
+                        from backend.cache import invalidate_user_cache
+                        invalidate_user_cache(user_id)
+                        
                         days_text = "day" if entries_created == 1 else "days"
                         return f"✓ Symptom '{symptom_name}' logged for {entries_created} {days_text}!"
 
@@ -337,6 +344,11 @@ def save_symptom(n_clicks, symptom_name, severity, start_date, end_date, time, n
                         'INSERT INTO "symptomlogentry" (daily_log_id, symptom_id, time, severity, notes) VALUES (%s, %s, %s, %s, %s)',
                         (daily_log_id, symptom_id, symptom_time, severity, notes))
                     conn.commit()
+                    
+                    # Invalidate user cache so fresh data is loaded next time
+                    from backend.cache import invalidate_user_cache
+                    invalidate_user_cache(user_id)
+                    
                     return f"✓ Symptom '{symptom_name}' logged!"
 
             conn.close()

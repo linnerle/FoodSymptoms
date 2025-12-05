@@ -17,7 +17,12 @@ layout = html.Div([
                 html.Label("Password:"),
                 dcc.Input(id='login-password', type='password'),
                 html.Button('Login', id='login-btn', n_clicks=0),
-                html.Div(id='login-message')
+                dcc.Loading(
+                    id='loading-login',
+                    type='circle',
+                    color='#1976d2',
+                    children=html.Div(id='login-message')
+                )
             ])
         ]),
         dcc.Tab(label='Sign Up', children=[
@@ -29,7 +34,12 @@ layout = html.Div([
                 html.Label("Password:"),
                 dcc.Input(id='signup-password', type='password'),
                 html.Button('Sign Up', id='signup-btn', n_clicks=0),
-                html.Div(id='signup-status')
+                dcc.Loading(
+                    id='loading-signup',
+                    type='circle',
+                    color='#1976d2',
+                    children=html.Div(id='signup-status')
+                )
             ])
         ])
     ])
@@ -56,7 +66,14 @@ def login(n_clicks, username, password):
                 user = cur.fetchone()
             conn.close()
             if user:
-                return True, user[0], "Login successful! Redirecting...", "/dashboard"
+                user_id = user[0]
+                # Pre-load user data into cache for fast subsequent access
+                from backend.cache import get_user_data
+                try:
+                    get_user_data(user_id, force_refresh=True)
+                except Exception as e:
+                    print(f"Cache pre-load warning: {e}")
+                return True, user_id, "Login successful! Redirecting...", "/dashboard"
             else:
                 return False, None, "Invalid username or password", dash.no_update
         except psycopg2.Error as e:

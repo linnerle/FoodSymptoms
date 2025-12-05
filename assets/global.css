@@ -287,3 +287,18 @@ table tbody tr:last-child {
 #symptom-severity label > div {
     order: 1 !important;
 }
+
+/* Analysis view mode radio items styling */
+#analysis-view-mode label {
+    font-weight: normal !important;
+    color: #333 !important;
+    margin-right: 24px !important;
+}
+
+#analysis-view-mode input[type="radio"]:checked ~ span {
+    font-weight: bold !important;
+}
+
+#analysis-view-mode label:has(input[type="radio"]:checked) {
+    font-weight: bold !important;
+}

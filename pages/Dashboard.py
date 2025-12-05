@@ -602,9 +602,9 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
                             'left': f'{left_pct}%',
                             'top': f'{top_px}px',
                             'minHeight': f'{entry_height}px',
-                            'width': f'calc({width_pct}% - 8px)',
+                            'width': f'calc({width_pct}% - 4px)',
                             'borderRadius': '4px',
-                            'padding': '6px 8px',
+                            'padding': '4px 6px',
                             'fontSize': '13px',
                             'overflow': 'hidden',  # Prevent overflow
                             'maxWidth': '100%',    # Ensure entry stays within column
@@ -616,9 +616,14 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
                         }
                         # Use unified style for all entry types
                         entry_style.update(get_entry_style(entry['type']))
-                        # Build entry content - only show time if not 00:00
+                        # Build entry content - show 'All day' for 00:00
                         entry_content = []
-                        if entry['time'] != '00:00':
+                        if entry['time'] == '00:00':
+                            entry_content.append(
+                                html.Span('All day', style={
+                                    'fontWeight': 'bold', 'fontSize': '11px', 'color': '#1976d2', 'marginRight': '8px'})
+                            )
+                        else:
                             entry_content.append(
                                 html.Span(entry['time'], style={
                                     'fontWeight': 'bold', 'fontSize': '11px', 'color': '#1976d2', 'marginRight': '8px'})
@@ -895,16 +900,16 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
                         html.Div(
                             (lambda day_data: [item['card'] for item in sorted(
                                 (
-                                    [{'type': 'meal', 'time': v['time'], 'card': card} 
-                                     for k, v in day_data.get('meals', {}).items() 
+                                    [{'type': 'meal', 'time': v['time'], 'card': card}
+                                     for k, v in day_data.get('meals', {}).items()
                                      if k is not None and str(k).strip() not in ('', 'None', 'none', 'null', '0') and k != 0
                                      for card in create_month_entry_cards({k: v}, 'meal')]
-                                ) + 
+                                ) +
                                 (
                                     [{'type': 'food', 'time': e['time'], 'card': card}
                                      for e in day_data.get('foods', [])
                                      for card in create_month_entry_cards([e], 'food')]
-                                ) + 
+                                ) +
                                 (
                                     [{'type': 'symptom', 'time': e['time'], 'card': card}
                                      for e in day_data.get('symptoms', [])
@@ -912,7 +917,7 @@ def calendar_view(user_id, refresh_trigger, view_mode, current_date, pathname, p
                                 ),
                                 key=lambda x: x['time']
                             )])(entries.get(f"{year}-{month:02d}-{day:02d}", {}))
-                            if day != 0 else [], 
+                            if day != 0 else [],
                             style={'display': 'flex', 'flexDirection': 'column', 'gap': '2px'}) if day != 0 else ""
                     ], style=get_td_style(day)) for day in week
                 ]) for week in cal
@@ -992,12 +997,13 @@ def manage_entry_modal(entry_clicks, close_clicks, current_style, refresh_data, 
                                 time_display = "" if time_str == '00:00' else f" ({time_str})"
                                 notes_display = f" - {row['notes']}" if row['notes'] and row['notes'].strip(
                                 ) else ""
-                                
+
                                 food_items.append(html.Li(
                                     f"{row['description']}{time_display}{notes_display}",
-                                    style={'marginBottom': '8px', 'fontSize': '14px'}
+                                    style={'marginBottom': '8px',
+                                           'fontSize': '14px'}
                                 ))
-                                
+
                                 # Store food data for editing
                                 foods_list.append({
                                     'food_entry_id': int(row['food_entry_id']),
@@ -1222,10 +1228,12 @@ def manage_entry_modal(entry_clicks, close_clicks, current_style, refresh_data, 
                                     n_clicks=0, style={'padding': '4px 12px', 'fontSize': '12px', 'backgroundColor': '#ffebee', 'color': '#d32f2f', 'border': '1px solid #ffcdd2', 'borderRadius': '4px', 'cursor': 'pointer'})
                     ], style={'display': 'flex', 'alignItems': 'center', 'marginBottom': '20px', 'paddingBottom': '8px', 'borderBottom': '2px solid #90caf9'})
                     # Extract entry data for editing
-                    entry_data = {k: v for k, v in details.items() if k not in ['content', 'title']}
+                    entry_data = {k: v for k, v in details.items() if k not in [
+                        'content', 'title']}
                     return {'display': 'block', 'position': 'fixed', 'zIndex': 1000, 'left': 0, 'top': 0, 'width': '100%', 'height': '100%', 'backgroundColor': 'rgba(0,0,0,0.4)'}, title_row, details['content'], dash.no_update, modal_close_data, entry_data
                 elif isinstance(details, dict):
-                    title_row = html.H3(details['title'], style={'color': '#1976d2', 'marginBottom': '20px', 'borderBottom': '2px solid #90caf9', 'paddingBottom': '8px'})
+                    title_row = html.H3(details['title'], style={
+                                        'color': '#1976d2', 'marginBottom': '20px', 'borderBottom': '2px solid #90caf9', 'paddingBottom': '8px'})
                     return {'display': 'block', 'position': 'fixed', 'zIndex': 1000, 'left': 0, 'top': 0, 'width': '100%', 'height': '100%', 'backgroundColor': 'rgba(0,0,0,0.4)'}, title_row, details['content'], dash.no_update, modal_close_data, {}
                 else:
                     return {'display': 'block', 'position': 'fixed', 'zIndex': 1000, 'left': 0, 'top': 0, 'width': '100%', 'height': '100%', 'backgroundColor': 'rgba(0,0,0,0.4)'}, "", details, dash.no_update, modal_close_data, {}
@@ -1276,6 +1284,11 @@ def delete_entry(delete_clicks, user_id, current_refresh):
                 (entry_id, user_id))
         conn.commit()
     conn.close()
+    
+    # Invalidate user cache to reflect the deletion
+    from backend.cache import invalidate_user_cache
+    invalidate_user_cache(user_id)
+    
     return {'display': 'none'}, (current_refresh or 0) + 1
 
 
@@ -1301,26 +1314,28 @@ def handle_edit_mode(edit_clicks, save_clicks, cancel_clicks, edit_mode, entry_d
     ctx = dash.callback_context
     if not ctx.triggered:
         return dash.no_update, dash.no_update, dash.no_update, dash.no_update
-    
+
     trigger_id = ctx.triggered[0]['prop_id']
-    
+
     # Cancel edit mode
     if 'modal-cancel-edit' in trigger_id:
         # Rebuild readonly view from entry_data
         return build_entry_view(entry_data), False, entry_data, dash.no_update
-    
+
     # Save changes
     if 'modal-save-edit' in trigger_id and entry_data:
         # Get edited values from State
-        new_time = time_values[0] if time_values and len(time_values) > 0 else None
-        new_severity = severity_values[0] if severity_values and len(severity_values) > 0 else None
-        
+        new_time = time_values[0] if time_values and len(
+            time_values) > 0 else None
+        new_severity = severity_values[0] if severity_values and len(
+            severity_values) > 0 else None
+
         # Update database
         conn = get_db_connection()
         with conn.cursor() as cur:
             entry_type = entry_data.get('entry_type')
             entry_id = entry_data.get('entry_id')
-            
+
             if entry_type == 'food' and new_time:
                 cur.execute(
                     'UPDATE "foodlogentry" SET time = %s WHERE id = %s',
@@ -1331,7 +1346,7 @@ def handle_edit_mode(edit_clicks, save_clicks, cancel_clicks, edit_mode, entry_d
                     cur.execute(
                         'UPDATE "foodlogentry" SET time = %s WHERE meal_id = %s',
                         (new_time, entry_id))
-                
+
                 # Handle food removal - delete unchecked foods
                 foods = entry_data.get('foods', [])
                 for idx, food in enumerate(foods):
@@ -1342,24 +1357,29 @@ def handle_edit_mode(edit_clicks, save_clicks, cancel_clicks, edit_mode, entry_d
                             cur.execute(
                                 'DELETE FROM "foodlogentry" WHERE id = %s',
                                 (food['food_entry_id'],))
-                
+
                 # Check if any foods remain in the meal
                 cur.execute(
                     'SELECT COUNT(*) FROM "foodlogentry" WHERE meal_id = %s',
                     (entry_id,))
                 remaining_count = cur.fetchone()[0]
-                
+
                 # If no foods remain, the meal is deleted (handled by the delete cascade)
                 if remaining_count == 0:
                     conn.commit()
                     conn.close()
+                    
+                    # Invalidate user cache to reflect the deletion
+                    from backend.cache import invalidate_user_cache
+                    invalidate_user_cache(entry_data.get('user_id'))
+                    
                     # Close modal and refresh
                     return dash.no_update, False, {}, (refresh_data or 0) + 1
-                
+
                 # Update foods list in entry_data
-                entry_data['foods'] = [f for idx, f in enumerate(foods) 
-                                      if idx < len(food_keep_values) and food_keep_values[idx] and 'keep' in food_keep_values[idx]]
-                
+                entry_data['foods'] = [f for idx, f in enumerate(foods)
+                                       if idx < len(food_keep_values) and food_keep_values[idx] and 'keep' in food_keep_values[idx]]
+
             elif entry_type == 'symptom':
                 if new_time and new_severity:
                     cur.execute(
@@ -1373,24 +1393,28 @@ def handle_edit_mode(edit_clicks, save_clicks, cancel_clicks, edit_mode, entry_d
                     cur.execute(
                         'UPDATE "symptomlogentry" SET severity = %s WHERE id = %s',
                         (int(new_severity), entry_id))
-            
+
             conn.commit()
         conn.close()
         
+        # Invalidate user cache to reflect the update
+        from backend.cache import invalidate_user_cache
+        invalidate_user_cache(entry_data.get('user_id'))
+
         # Update entry_data with new values
         if new_time:
             entry_data['time'] = new_time
         if new_severity:
             entry_data['severity'] = int(new_severity)
-        
+
         # Return updated view and trigger calendar refresh
         return build_entry_view(entry_data), False, entry_data, (refresh_data or 0) + 1
-    
+
     # Enter edit mode
     if 'modal-edit-btn' in trigger_id and edit_clicks > 0:
         # Build editable view
         return build_entry_edit_view(entry_data), True, entry_data, dash.no_update
-    
+
     return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
 
@@ -1398,44 +1422,51 @@ def build_entry_view(entry_data):
     """Build readonly view of entry"""
     if not entry_data:
         return html.Div("No entry data")
-    
+
     entry_type = entry_data.get('entry_type')
     content_parts = []
-    
+
     if entry_type in ['food', 'meal', 'symptom']:
         time_str = entry_data.get('time', '00:00')
         if time_str != '00:00':
             content_parts.append(
                 html.Div([
-                    html.Strong("Time:", style={'color': '#666', 'fontSize': '14px'}),
-                    html.Span(time_str, style={'fontSize': '16px', 'marginLeft': '8px'})
+                    html.Strong("Time:", style={
+                                'color': '#666', 'fontSize': '14px'}),
+                    html.Span(time_str, style={
+                              'fontSize': '16px', 'marginLeft': '8px'})
                 ], style={'marginBottom': '12px'})
             )
-    
+
     if entry_type == 'meal':
         foods = entry_data.get('foods', [])
         if foods and isinstance(foods, list):
-            food_items = [html.Li(f.get('description', ''), style={'fontSize': '14px', 'marginBottom': '4px'}) 
-                         for f in foods if isinstance(f, dict)]
+            food_items = [html.Li(f.get('description', ''), style={'fontSize': '14px', 'marginBottom': '4px'})
+                          for f in foods if isinstance(f, dict)]
             if food_items:
                 content_parts.append(
                     html.Div([
-                        html.Strong("Foods in this meal:", style={'color': '#666', 'fontSize': '14px', 'marginBottom': '8px', 'display': 'block'}),
-                        html.Ul(food_items, style={'paddingLeft': '20px', 'marginTop': '8px'})
+                        html.Strong("Foods in this meal:", style={
+                                    'color': '#666', 'fontSize': '14px', 'marginBottom': '8px', 'display': 'block'}),
+                        html.Ul(food_items, style={
+                                'paddingLeft': '20px', 'marginTop': '8px'})
                     ], style={'marginBottom': '16px'})
                 )
-    
+
     if entry_type == 'symptom':
         severity = entry_data.get('severity', 5)
-        severity_emojis = {1: '', 2: '🙁', 3: '', 4: '😕', 5: '', 6: '😟', 7: '', 8: '😣', 9: '', 10: '😫'}
+        severity_emojis = {1: '', 2: '🙁', 3: '', 4: '😕',
+                           5: '', 6: '😟', 7: '', 8: '😣', 9: '', 10: '😫'}
         severity_emoji = severity_emojis.get(severity, '')
         content_parts.append(
             html.Div([
-                html.Strong("Severity:", style={'color': '#666', 'fontSize': '14px'}),
-                html.Span(f" {severity}/10 {severity_emoji}", style={'fontSize': '16px', 'marginLeft': '8px'})
+                html.Strong("Severity:", style={
+                            'color': '#666', 'fontSize': '14px'}),
+                html.Span(f" {severity}/10 {severity_emoji}",
+                          style={'fontSize': '16px', 'marginLeft': '8px'})
             ], style={'marginBottom': '12px'})
         )
-    
+
     return html.Div(content_parts, style={'padding': '8px'})
 
 
@@ -1443,45 +1474,50 @@ def build_entry_edit_view(entry_data):
     """Build editable view of entry with input fields"""
     if not entry_data:
         return html.Div("No entry data available")
-    
+
     entry_type = entry_data.get('entry_type')
     content_parts = []
-    
+
     if entry_type in ['food', 'meal', 'symptom']:
         # Time input (using text type with placeholder for HH:MM format)
         time_value = entry_data.get('time', '00:00')
         content_parts.append(
             html.Div([
-                html.Strong("Time:", style={'color': '#666', 'fontSize': '14px', 'display': 'block', 'marginBottom': '4px'}),
+                html.Strong("Time:", style={
+                            'color': '#666', 'fontSize': '14px', 'display': 'block', 'marginBottom': '4px'}),
                 dcc.Input(
                     id={'type': 'modal-edit-time', 'index': 0},
                     type='text',
                     value=time_value,
                     placeholder='HH:MM',
-                    style={'width': '150px', 'padding': '6px', 'fontSize': '14px', 'borderRadius': '4px', 'border': '1px solid #ccc'}
+                    style={'width': '150px', 'padding': '6px', 'fontSize': '14px',
+                           'borderRadius': '4px', 'border': '1px solid #ccc'}
                 )
             ], style={'marginBottom': '16px'})
         )
-    
+
     if entry_type == 'meal':
         # Meal name input
         foods = entry_data.get('foods', [])
         if foods and isinstance(foods, list):
-            meal_name = ', '.join([f.get('description', '') for f in foods if isinstance(f, dict)])
+            meal_name = ', '.join([f.get('description', '')
+                                  for f in foods if isinstance(f, dict)])
         else:
             meal_name = ''
         content_parts.append(
             html.Div([
-                html.Strong("Meal Name:", style={'color': '#666', 'fontSize': '14px', 'display': 'block', 'marginBottom': '4px'}),
+                html.Strong("Meal Name:", style={
+                            'color': '#666', 'fontSize': '14px', 'display': 'block', 'marginBottom': '4px'}),
                 dcc.Input(
                     id={'type': 'modal-edit-meal-name', 'index': 0},
                     type='text',
                     value=meal_name,
-                    style={'width': '300px', 'padding': '6px', 'fontSize': '14px', 'borderRadius': '4px', 'border': '1px solid #ccc'}
+                    style={'width': '300px', 'padding': '6px', 'fontSize': '14px',
+                           'borderRadius': '4px', 'border': '1px solid #ccc'}
                 )
             ], style={'marginBottom': '16px'})
         )
-        
+
         # Foods list with remove buttons
         foods = entry_data.get('foods', [])
         if foods and isinstance(foods, list):
@@ -1492,48 +1528,53 @@ def build_entry_edit_view(entry_data):
                         html.Div([
                             dcc.Checklist(
                                 id={'type': 'modal-edit-food-keep', 'index': idx},
-                                options=[{'label': food.get('description', 'Unknown food'), 'value': 'keep'}],
+                                options=[
+                                    {'label': food.get('description', 'Unknown food'), 'value': 'keep'}],
                                 value=['keep'],
                                 style={'display': 'inline-block'}
                             ),
-                            html.Span(' (uncheck to remove)', style={'fontSize': '12px', 'color': '#999', 'marginLeft': '8px'})
+                            html.Span(' (uncheck to remove)', style={
+                                      'fontSize': '12px', 'color': '#999', 'marginLeft': '8px'})
                         ], style={'marginBottom': '8px'})
                     )
-            
+
             if food_checkboxes:
                 content_parts.append(
                     html.Div([
-                        html.Strong("Foods in meal:", style={'color': '#666', 'fontSize': '14px', 'display': 'block', 'marginBottom': '8px'}),
+                        html.Strong("Foods in meal:", style={
+                                    'color': '#666', 'fontSize': '14px', 'display': 'block', 'marginBottom': '8px'}),
                         html.Div(food_checkboxes)
                     ], style={'marginBottom': '16px'})
                 )
-    
+
     if entry_type == 'symptom':
         # Severity dropdown
         severity_value = entry_data.get('severity', 5)
         content_parts.append(
             html.Div([
-                html.Strong("Severity:", style={'color': '#666', 'fontSize': '14px', 'display': 'block', 'marginBottom': '4px'}),
+                html.Strong("Severity:", style={
+                            'color': '#666', 'fontSize': '14px', 'display': 'block', 'marginBottom': '4px'}),
                 dcc.Dropdown(
                     id={'type': 'modal-edit-severity', 'index': 0},
-                    options=[{'label': str(i), 'value': i} for i in range(1, 11)],
+                    options=[{'label': str(i), 'value': i}
+                             for i in range(1, 11)],
                     value=severity_value,
                     clearable=False,
                     style={'width': '150px'}
                 )
             ], style={'marginBottom': '16px'})
         )
-    
+
     # Action buttons
     content_parts.append(
         html.Div([
             html.Button('Save', id={'type': 'modal-save-edit', 'index': 0},
-                       style={'padding': '8px 16px', 'fontSize': '14px', 'backgroundColor': '#4caf50', 'color': 'white', 'border': 'none', 'borderRadius': '4px', 'cursor': 'pointer', 'marginRight': '8px'}),
+                        style={'padding': '8px 16px', 'fontSize': '14px', 'backgroundColor': '#4caf50', 'color': 'white', 'border': 'none', 'borderRadius': '4px', 'cursor': 'pointer', 'marginRight': '8px'}),
             html.Button('Cancel', id={'type': 'modal-cancel-edit', 'index': 0},
-                       style={'padding': '8px 16px', 'fontSize': '14px', 'backgroundColor': '#f5f5f5', 'color': '#666', 'border': '1px solid #ccc', 'borderRadius': '4px', 'cursor': 'pointer'})
+                        style={'padding': '8px 16px', 'fontSize': '14px', 'backgroundColor': '#f5f5f5', 'color': '#666', 'border': '1px solid #ccc', 'borderRadius': '4px', 'cursor': 'pointer'})
         ], style={'marginTop': '20px'})
     )
-    
+
     return html.Div(content_parts, style={'padding': '8px'})
 
 

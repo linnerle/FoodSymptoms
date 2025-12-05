@@ -22,7 +22,8 @@ layout = html.Div([
                 id='loading-search-results',
                 type='circle',
                 color='#1976d2',
-                children=html.Div(id='food-search-results', style={'marginBottom': '16px'})
+                children=html.Div(id='food-search-results',
+                                  style={'marginBottom': '16px'})
             ),
             html.Label("Selected Foods:"),
             html.Ul(id='selected-foods-list', style={'minHeight': '60px', 'padding': '12px',
@@ -86,19 +87,20 @@ layout = html.Div([
 def populate_from_url_params(pathname, search):
     """Populate date and time from URL query parameters when first loading the page"""
     print(f"DEBUG log_food: pathname={pathname}, URL search params: {search}")
-    
+
     # Only process if we're on the log-food page and have URL params
     if pathname == '/log-food' and search:
         from urllib.parse import parse_qs
         params = parse_qs(search.lstrip('?'))
         print(f"DEBUG log_food: Parsed params: {params}")
-        
+
         if 'date' in params and 'time' in params:
             date_val = params['date'][0]
             time_val = params['time'][0]
-            print(f"DEBUG log_food: Setting from URL date={date_val}, time={time_val}")
+            print(
+                f"DEBUG log_food: Setting from URL date={date_val}, time={time_val}")
             return date_val, time_val
-    
+
     # Return no_update to preserve existing values
     return dash.no_update, dash.no_update
 
@@ -111,14 +113,14 @@ def create_paginated_table(results, current_page, total_pages, viewed_ingredient
     # Get all fdc_ids for this page and check which have ingredients in ONE query
     fdc_ids = [row['fdc_id'] for row in page_results]
     foods_with_ingredients = set()
-    
+
     if fdc_ids:
         try:
             conn = get_db_connection()
             placeholders = ', '.join(['%s'] * len(fdc_ids))
             with conn.cursor() as cur:
                 cur.execute(
-                    f'SELECT DISTINCT fdc_id FROM "ingredient" WHERE fdc_id IN ({placeholders})', 
+                    f'SELECT DISTINCT fdc_id FROM "ingredient" WHERE fdc_id IN ({placeholders})',
                     fdc_ids
                 )
                 foods_with_ingredients = {row[0] for row in cur.fetchall()}
@@ -535,6 +537,11 @@ def save_meal(n_clicks, selected_foods, user_id, meal_date, meal_time, saved_mea
                                         (daily_log_id, item['fdc_id'], time, meal_notes, meal_id))
                 conn.commit()
             conn.close()
+            
+            # Invalidate user cache so fresh data is loaded next time
+            from backend.cache import invalidate_user_cache
+            invalidate_user_cache(user_id)
+            
             return f"Meal saved with {len(selected_foods)} foods!", [], []
         except psycopg2.Error as e:
             return f"Database error: {e}", selected_foods, []
