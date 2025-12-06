@@ -7,42 +7,65 @@ dash.register_page(__name__, path='/', order=0)
 
 
 layout = html.Div([
-    html.H1("MealMap - Login"),
     dcc.Location(id='login-redirect', refresh=True),
-    dcc.Tabs([
-        dcc.Tab(label='Login', children=[
-            html.Div([
-                html.Label("Username:"),
-                dcc.Input(id='login-username', type='text'),
-                html.Label("Password:"),
-                dcc.Input(id='login-password', type='password'),
-                html.Button('Login', id='login-btn', n_clicks=0),
-                dcc.Loading(
-                    id='loading-login',
-                    type='circle',
-                    color='#1976d2',
-                    children=html.Div(id='login-message')
-                )
+    html.Div([
+        html.Div([
+            html.H1("MealMap", style={'textAlign': 'center', 'color': '#1976d2', 'marginBottom': '32px'}),
+            dcc.Tabs(id='auth-tabs', value='login', children=[
+                dcc.Tab(label='Login', value='login', children=[
+                    html.Div([
+                        html.Label("Username", style={'display': 'block', 'marginBottom': '8px', 'fontWeight': 'bold', 'color': '#333'}),
+                        dcc.Input(id='login-username', type='text', placeholder='Enter username',
+                                  style={'width': '100%', 'padding': '10px', 'marginBottom': '16px', 
+                                         'border': '1px solid #e0e0e0', 'borderRadius': '4px', 'boxSizing': 'border-box'}),
+                        html.Label("Password", style={'display': 'block', 'marginBottom': '8px', 'fontWeight': 'bold', 'color': '#333'}),
+                        dcc.Input(id='login-password', type='password', placeholder='Enter password',
+                                  style={'width': '100%', 'padding': '10px', 'marginBottom': '24px', 
+                                         'border': '1px solid #e0e0e0', 'borderRadius': '4px', 'boxSizing': 'border-box'}),
+                        html.Button('Login', id='login-btn', n_clicks=0,
+                                    style={'width': '100%', 'padding': '12px', 'backgroundColor': '#1976d2', 
+                                           'color': 'white', 'border': 'none', 'borderRadius': '4px', 
+                                           'cursor': 'pointer', 'fontWeight': 'bold', 'fontSize': '16px'}),
+                        dcc.Loading(
+                            id='loading-login',
+                            type='circle',
+                            color='#1976d2',
+                            children=html.Div(id='login-message', style={'marginTop': '16px', 'textAlign': 'center', 'color': '#666'})
+                        )
+                    ], style={'padding': '24px 0'})
+                ]),
+                dcc.Tab(label='Sign Up', value='signup', children=[
+                    html.Div([
+                        html.Label("Username", style={'display': 'block', 'marginBottom': '8px', 'fontWeight': 'bold', 'color': '#333'}),
+                        dcc.Input(id='signup-username', type='text', placeholder='Choose username',
+                                  style={'width': '100%', 'padding': '10px', 'marginBottom': '16px', 
+                                         'border': '1px solid #e0e0e0', 'borderRadius': '4px', 'boxSizing': 'border-box'}),
+                        html.Label("Email", style={'display': 'block', 'marginBottom': '8px', 'fontWeight': 'bold', 'color': '#333'}),
+                        dcc.Input(id='signup-email', type='email', placeholder='Enter email',
+                                  style={'width': '100%', 'padding': '10px', 'marginBottom': '16px', 
+                                         'border': '1px solid #e0e0e0', 'borderRadius': '4px', 'boxSizing': 'border-box'}),
+                        html.Label("Password", style={'display': 'block', 'marginBottom': '8px', 'fontWeight': 'bold', 'color': '#333'}),
+                        dcc.Input(id='signup-password', type='password', placeholder='Choose password',
+                                  style={'width': '100%', 'padding': '10px', 'marginBottom': '24px', 
+                                         'border': '1px solid #e0e0e0', 'borderRadius': '4px', 'boxSizing': 'border-box'}),
+                        html.Button('Sign Up', id='signup-btn', n_clicks=0,
+                                    style={'width': '100%', 'padding': '12px', 'backgroundColor': '#1976d2', 
+                                           'color': 'white', 'border': 'none', 'borderRadius': '4px', 
+                                           'cursor': 'pointer', 'fontWeight': 'bold', 'fontSize': '16px'}),
+                        dcc.Loading(
+                            id='loading-signup',
+                            type='circle',
+                            color='#1976d2',
+                            children=html.Div(id='signup-status', style={'marginTop': '16px', 'textAlign': 'center', 'color': '#666'})
+                        )
+                    ], style={'padding': '24px 0'})
+                ])
             ])
-        ]),
-        dcc.Tab(label='Sign Up', children=[
-            html.Div([
-                html.Label("Username:"),
-                dcc.Input(id='signup-username', type='text'),
-                html.Label("Email:"),
-                dcc.Input(id='signup-email', type='email'),
-                html.Label("Password:"),
-                dcc.Input(id='signup-password', type='password'),
-                html.Button('Sign Up', id='signup-btn', n_clicks=0),
-                dcc.Loading(
-                    id='loading-signup',
-                    type='circle',
-                    color='#1976d2',
-                    children=html.Div(id='signup-status')
-                )
-            ])
-        ])
-    ])
+        ], style={'maxWidth': '400px', 'margin': '0 auto', 'padding': '32px', 
+                  'backgroundColor': 'white', 'borderRadius': '8px', 
+                  'boxShadow': '0 2px 8px rgba(0,0,0,0.1)'})
+    ], style={'display': 'flex', 'justifyContent': 'center', 'alignItems': 'center', 
+              'minHeight': '100vh', 'backgroundColor': '#f5f5f5'})
 ])
 
 
